@@ -1,3 +1,5 @@
+# f5_tac.model.backbones.dittac.py
+
 from __future__ import annotations
 
 import torch
@@ -9,7 +11,7 @@ from f5_tts.model.modules import (
     AdaLayerNorm_Final,
     ConvNeXtV2Block,
     ConvPositionEmbedding,
-    DiT,
+    DiTBlock,
     TimestepEmbedding,
     get_pos_embed_indices,
     precompute_freqs_cis,
@@ -19,11 +21,12 @@ from f5_tac.model.modules import DiTBlockWithTAC
 
 
 class DiTWithTAC(DiT):
-    def __init__(self, **kwargs):
+    def __init__(self,*, num_speakers: int = 2, **kwargs):
         super().__init__(**kwargs)
 
         self.transformer_blocks = nn.ModuleList([
             DiTBlockWithTAC (
+                num_speakers = num_speakers,
                 dim          = self.dim,
                 heads        = blk.attn.heads,
                 dim_head     = blk.attn.inner_dim // blk.attn.heads,
@@ -75,7 +78,7 @@ class DiTWithTAC(DiT):
         for block in self.transformer_blocks:
             if self.checkpoint_activations:
                 # https://pytorch.org/docs/stable/checkpoint.html#torch.utils.checkpoint.checkpoint
-                x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, t, mask, rope, spk_mask, use_reentrant=False)
+                x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, t, mask, rope, spk_mask=spk_mask, use_reentrant=False)
             else:
                 x = block(x, t, mask=mask, rope=rope, spk_mask=spk_mask)
 

@@ -1,6 +1,6 @@
+# f5_tac.model.tac.py
+
 import torch
-from f5_tts.model.backbones.dit import DiT
-from f5_tts.model.modules import DiTBlock
 
 import torch.nn
 import difflib
