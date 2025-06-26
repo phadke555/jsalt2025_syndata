@@ -15,7 +15,7 @@ from f5_tts.model.modules import (
     precompute_freqs_cis,
 )
 
-from f5_tac.modules import DiTBlockWithTAC
+from f5_tac.model.modules import DiTBlockWithTAC
 
 
 class DiTWithTAC(DiT):
@@ -77,7 +77,7 @@ class DiTWithTAC(DiT):
                 # https://pytorch.org/docs/stable/checkpoint.html#torch.utils.checkpoint.checkpoint
                 x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, t, mask, rope, spk_mask use_reentrant=False)
             else:
-                x = block(x, t, mask=mask, rope=rope, spk_mask)
+                x = block(x, t, mask=mask, rope=rope, spk_mask=spk_mask)
 
             # reshape
             # espnet: TAC
