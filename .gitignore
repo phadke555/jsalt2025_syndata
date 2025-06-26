@@ -1,0 +1,11 @@
+download_data.slurm
+finetune_f5tts.slurm
+inference_f5tts.slurm
+preparedata.ipynb
+envs/conda_env
+envs/F5-TTS
+logs/
+finetune/runs_log.md
+wandb/
+tests/
+.ipynb_checkpoints/
