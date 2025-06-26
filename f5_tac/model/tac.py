@@ -76,26 +76,25 @@ class TAC(torch.nn.Module):
         self.norm = get_layer(norm_type)(in_channels)
 
     def forward(self, inp, mask=None):
-        B, S, T, C = inp.shape
-
-        flat = inp.view(B*S*T, C)
-        shared = self.transform_shared(flat).view(B, S, T, self.hid_channels)
-
+        # bsz, mics, frames, channels
+        bsz, mics, channels = inp.shape
+        transformed = self.transform_shared(inp.view(bsz * mics, channels)).view(
+            bsz, mics, self.hid_channels
+        )
         if mask is not None:
-            # mask: (B, S) -> (B, S, 1, 1) to broadcast over time
-            m = mask.view(B, S, 1, 1).float()
-            total = m.sum(dim=1, keepdim=True)
-            avg_spk = (shared * m).sum(dim=1) / total.squeeze(1)
+            # average = transformed.masked_fill(mask, 0.0)
+            total = mask.sum(dim=1, keepdim=True).float()
+            average = (mask / total * transformed).sum(1)
+            # average = average.masked_fill(mask, 0.0)
         else:
-            avg_spk = shared.mean(dim=1)
-        
-        avg_flat = avg_spk.contiguous().view(B * T, self.hid_channels)
-        avg_hid = self.transform_avg(avg_flat).view(B, T, self.hid_channels)
-        avg_rep = avg_hid.unsqueeze(1).expand(-1, S, -1, -1)
+            average = transformed.mean(1)
 
-        concat   = torch.cat([shared, avg_rep], dim=-1) 
-        cat_flat = concat.view(B * S * T, 2 * self.hid_channels)
-        out_flat = self.transform_final(cat_flat)
-        out = out_flat.view(B, S, T, C)
-
-        return self.norm(out) + inp
+        average = self.transform_avg(average.unsqueeze(1).repeat(1, mics, 1))
+        transformed = torch.cat((transformed, average), -1).view(
+            bsz * mics,
+            2 * self.hid_channels,
+        )
+        out = self.norm(self.transform_final(transformed)) + inp.view(
+            bsz * mics, channels
+        )
+        return out.view(bsz, mics, channels)

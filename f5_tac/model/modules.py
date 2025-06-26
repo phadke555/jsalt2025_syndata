@@ -21,7 +21,7 @@ class DiTBlockWithTAC(DiTBlock):
 
         B2, T, D = x.shape
         if spk_mask is None:
-            S = num_speakers # TODO: infer from speaker count
+            S = self.num_speakers # TODO: infer from speaker count
             B = B2 // S
             spk_mask = x.new_ones((B, S), dtype=torch.bool)
         else:
