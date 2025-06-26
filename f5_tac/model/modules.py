@@ -29,10 +29,12 @@ class DiTBlockWithTAC(DiTBlock):
             B = B2 // S
 
         # per active speaker fusion
-        x_spk = x.view(B, S, T, D) # -> (B, S, T, D)
+        x = x.view(B, S, T, D) # -> (B, S, T, D)
+        x = x.permute(0, 2, 1, 3) # -> (B, T, S, D)
+        x = x.reshape(B*T, S, D) 
 
         # per speaker average internally
-        x_spk = self.tac(x_spk, mask=spk_mask)
-
-        x = x_spk.view(B2, T, D)   # -> (B⋅S, T, D)
+        x = self.tac(x, mask=spk_mask)
+        x = x.reshape(B, T, S, D).permute(0, 2, 1, 3)
+        x = x.view(B*S, T, D)   # -> (B⋅S, T, D)
         return x
