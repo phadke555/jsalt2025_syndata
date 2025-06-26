@@ -75,7 +75,7 @@ class DiTWithTAC(DiT):
         for block in self.transformer_blocks:
             if self.checkpoint_activations:
                 # https://pytorch.org/docs/stable/checkpoint.html#torch.utils.checkpoint.checkpoint
-                x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, t, mask, rope, spk_mask use_reentrant=False)
+                x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, t, mask, rope, spk_mask, use_reentrant=False)
             else:
                 x = block(x, t, mask=mask, rope=rope, spk_mask=spk_mask)
 
