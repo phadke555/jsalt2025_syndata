@@ -9,3 +9,8 @@ finetune/runs_log.md
 wandb/
 tests/
 .ipynb_checkpoints/
+unit_tests/
+unittest.slurm
+f5_tac/__pycache__/
+f5_tac/model/__pycache__/
+f5_tac/model/backbones/__pycache__/

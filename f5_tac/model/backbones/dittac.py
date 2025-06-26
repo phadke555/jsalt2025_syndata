@@ -17,27 +17,31 @@ from f5_tts.model.modules import (
     precompute_freqs_cis,
 )
 
+from f5_tts.model.backbones.dit import DiT
+
 from f5_tac.model.modules import DiTBlockWithTAC
 
 
 class DiTWithTAC(DiT):
     def __init__(self,*, num_speakers: int = 2, **kwargs):
         super().__init__(**kwargs)
+        self.num_speakers = num_speakers
 
+        orig_blocks = self.transformer_blocks
         self.transformer_blocks = nn.ModuleList([
             DiTBlockWithTAC (
                 num_speakers = num_speakers,
                 dim          = self.dim,
                 heads        = blk.attn.heads,
                 dim_head     = blk.attn.inner_dim // blk.attn.heads,
-                ff_mult      = blk.ff.ff[0].out_features  / blk.ff.ff[0].in_features,
-                dropout      = blk.ff.ff[1].p,
-                qk_norm      = blk.attn.q_norm      is not None,
+                ff_mult      = 4,
+                dropout      = 0.1,
+                qk_norm      = blk.attn.q_norm,
                 pe_attn_head = blk.attn.processor.pe_attn_head,
                 attn_backend = blk.attn.processor.attn_backend,
                 attn_mask_enabled = blk.attn.processor.attn_mask_enabled,
             )
-            for blk in self.transformer_blocks
+            for blk in orig_blocks
         ])
     
     def forward(

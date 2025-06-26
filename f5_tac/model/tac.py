@@ -83,8 +83,11 @@ class TAC(torch.nn.Module):
         )
         if mask is not None:
             # average = transformed.masked_fill(mask, 0.0)
-            total = mask.sum(dim=1, keepdim=True).float()
-            average = (mask / total * transformed).sum(1)
+            average = (
+                (transformed * mask.unsqueeze(-1))           # broadcast mask: (B,mics,1)→(B,mics,hid)
+                .sum(1)                                      # sum over speakers → (B,hid)
+                / mask.sum(1, keepdim=True).float()          # divide by #active speakers (B,1)→broadcast (B,hid)
+            )
             # average = average.masked_fill(mask, 0.0)
         else:
             average = transformed.mean(1)
