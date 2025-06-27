@@ -1,0 +1,63 @@
+# Configuration for training F5-TAC on the Fisher dataset
+
+# Model Configuration
+model:
+  name: "f5_tac_fisher"
+  backbone: "f5_tac.model.dittac.DiTWithTAC" # Path to your new backbone
+  tokenizer: "custom"
+  tokenizer_path: "./prepared_fisher_data/vocab.txt" # Path to the vocab file copied by prepare_fisher.py
+
+  # Architecture for DiTWithTAC
+  arch:
+    dim: 1024
+    depth: 22
+    heads: 16
+    ff_mult: 2
+    text_dim: 512
+    text_mask_padding: True
+    qk_norm: null  # null | rms_norm
+    conv_layers: 4
+    pe_attn_head: null
+    attn_backend: torch  # torch | flash_attn
+    attn_mask_enabled: False
+    checkpoint_activations: False  # recompute activations and save memory for extra compute
+
+  # Mel Spectrogram settings (can be tuned)
+  mel_spec:
+    mel_spec_type: "vocos"
+    n_mel_channels: 100
+    hop_length: 256
+    n_fft: 1024
+    win_length: 1024
+    target_sample_rate: 24000
+
+  # Vocoder settings for sample logging
+  vocoder:
+    is_local: False
+    local_path: ""
+
+# Dataset Configuration
+datasets:
+  name: "./prepared_fisher_data" # IMPORTANT: Path to the directory created by prepare_fisher.py
+  batch_size_per_gpu: 12000 # Using 'frame' based batching
+  batch_size_type: "frame" # 'frame' or 'sample'
+  max_samples: 16 # Max samples per batch when using frame-based batching
+  num_workers: 16
+
+# Optimizer Configuration
+optim:
+  epochs: 100
+  learning_rate: 0.0002
+  num_warmup_updates: 20000
+  grad_accumulation_steps: 1
+  max_grad_norm: 1.0
+  bnb_optimizer: False # Use 8-bit optimizer
+
+# Checkpoint and Logging Configuration
+ckpts:
+  save_dir: "/work/users/r/p/rphadke/JSALT/ckpts/f5_tac_fisher" # Directory to save checkpoints
+  save_per_updates: 20000
+  last_per_updates: 5000
+  keep_last_n_checkpoints: 0
+  logger: "wandb" # or "tensorboard" or None
+  log_samples: True
