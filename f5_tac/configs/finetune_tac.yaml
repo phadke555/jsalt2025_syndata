@@ -1,0 +1,29 @@
+# ----------------------- F5-TAC Finetune Config ----------------------- #
+exp_name: f5_tac_finetune
+
+dataset_name: fisher_sample
+data_root: /work/users/r/p/rphadke/JSALT/
+
+tokenizer: custom
+tokenizer_path: /work/users/r/p/rphadke/JSALT/fisher_sample/vocab.txt
+
+pretrain: /work/users/r/p/rphadke/JSALT/ckpts/fisher_sample/pretrained_model_1250000.safetensors
+finetune: true
+
+learning_rate: 1e-6
+epochs: 10
+
+batch_size_per_gpu: 3200
+batch_size_type: frame
+max_samples: 16
+grad_accumulation_steps: 1
+max_grad_norm: 1.0
+
+save_per_updates: 5000
+keep_last_n_checkpoints: 0
+last_per_updates: 500
+
+bnb_optimizer: false
+log_samples: true
+
+logger: wandb
