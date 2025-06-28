@@ -53,6 +53,11 @@ class FisherDataset(Dataset):
     def __len__(self):
         return len(self.data)
 
+    def _process_audio(self, path):
+        wav, sr = torchaudio.load(path)
+        mel = self.mel_spectrogram(wav)
+        return mel.squeeze(0)
+
     def __getitem__(self, index: int) -> dict:
         """
         Loads, preprocesses audio, and returns a single conversation pair with raw text.
