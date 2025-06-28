@@ -16,5 +16,3 @@ f5_tac/model/__pycache__/
 f5_tac/model/backbones/__pycache__/
 prepare_manifests.slurm
 finetune_f5tac.slurm
-f5_tac/train/prepare_fisher.py
-f5_tac/train/prepare_manifests.py
