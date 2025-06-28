@@ -127,191 +127,145 @@ Requirements:
 #     main()
 
 
-
 import argparse
 import os
 import json
 import shutil
 from pathlib import Path
+from collections import defaultdict
 
 import pandas as pd
 import torch
 import torchaudio
-from datasets import Dataset
-from lhotse import SupervisionSet
+from datasets.arrow_writer import ArrowWriter
 from tqdm import tqdm
 
+from lhotse import RecordingSet, SupervisionSet, CutSet
+from lhotse.cut import append_cuts
+
 def get_args():
-    """
-    Parses command-line arguments.
-    """
-    parser = argparse.ArgumentParser(
-        description="Prepare the Fisher dataset for two-speaker TTS training."
-    )
-    parser.add_argument(
-        "--fisher_path",
-        type=str,
-        required=True,
-        help="Path to the root of the Fisher dataset directory, containing lhotse manifests.",
-    )
-    parser.add_argument(
-        "--output_path",
-        type=str,
-        required=True,
-        help="Path to the output directory where prepared files will be saved.",
-    )
-    parser.add_argument(
-        "--vocab_path",
-        type=str,
-        default=None,
-        help="Optional: Path to the vocab.txt file to copy to the output directory.",
-    )
-    parser.add_argument(
-        "--target_sample_rate",
-        type=int,
-        default=24000,
-        help="The target sample rate to resample the audio to.",
-    )
+    parser = argparse.ArgumentParser(description="Prepare the Fisher dataset for two-speaker TTS training.")
+    parser.add_argument("--fisher_path", type=str, required=True)
+    parser.add_argument("--output_path", type=str, required=True)
+    parser.add_argument("--vocab_path", type=str, default=None)
+    parser.add_argument("--target_sample_rate", type=int, default=24000)
+    parser.add_argument("--num_samples", type=int, default=None)
+    parser.add_argument("--supervisions_path", type=str, default=None)
     return parser.parse_args()
 
+def prepare_fisher(fisher_path, output_path, target_sample_rate, num_samples=None, supervisions_path=None):
+    print("--- Starting Fisher Dataset Preparation with CutSet ---")
 
-def prepare_fisher(fisher_path: str, output_path: str, target_sample_rate: int):
-    """
-    Main function to process the dataset.
-
-    This function reads lhotse manifests, processes each conversation to extract
-    paired speaker data, resamples and saves the audio, and creates the
-    necessary metadata, arrow, and duration files for training.
-    """
-    print("--- Starting Fisher Dataset Preparation ---")
-    
-    # 1. Setup paths
     fisher_path = Path(fisher_path)
     output_path = Path(output_path)
     output_wav_path = output_path / "wavs"
-    
-    print(f"Fisher Manifests Path: {fisher_path}")
-    print(f"Output Path: {output_path}")
-    
-    os.makedirs(output_wav_path, exist_ok=True)
+    output_path.mkdir(parents=True, exist_ok=True)
+    output_wav_path.mkdir(parents=True, exist_ok=True)
 
-    # 2. Load Lhotse manifests
-    print("Loading Lhotse manifests...")
-    try:
-        supervisions = SupervisionSet.from_file(fisher_path / "supervisions.jsonl.gz")
-        assert (fisher_path / "recordings.jsonl.gz").exists(), \
-            "recordings.jsonl.gz not found in the fisher_path."
-    except Exception as e:
-        print(f"Error loading manifests: {e}")
-        print("Please ensure 'supervisions.jsonl.gz' and 'recordings.jsonl.gz' are in the specified fisher_path.")
-        return
+    if supervisions_path:
+        supervisions_file = Path(supervisions_path)
+        recordings_file = supervisions_file.parent / "recordings.jsonl.gz"
+    else:
+        supervisions_file = fisher_path / "supervisions.jsonl.gz"
+        recordings_file = fisher_path / "recordings.jsonl.gz"
 
-    # 3. Group supervisions by conversation (recording_id)
-    print("Grouping supervisions by conversation...")
-    conversations = supervisions.group_by_recording_id()
-    
+    print(f"Loading manifests from: {supervisions_file}, {recordings_file}")
+    recordings = RecordingSet.from_file(recordings_file)
+    supervisions = SupervisionSet.from_file(supervisions_file)
+    cuts = CutSet.from_manifests(recordings=recordings, supervisions=supervisions)
+
+    conversations = defaultdict(list)
+    for cut in cuts:
+        base_id = cut.recording_id.rsplit('-', 1)[0]  # removes -A or -B
+        conversations[base_id].append(cut)
+        if num_samples is not None and len(conversations) >= num_samples:
+            break 
+
+
+    conversation_items = list(conversations.items())
+    if num_samples is not None:
+        conversation_items = conversation_items[:num_samples]
+
     metadata = []
-    
-    print(f"Found {len(conversations)} conversations. Processing...")
-    for recording_id, conv_supervisions in tqdm(conversations.items(), desc="Processing Conversations"):
-        
-        speaker_ids = sorted(list(conv_supervisions.speakers))
-        if len(speaker_ids) != 2:
-            continue
+    for recording_id, cuts_per_convo in tqdm(conversation_items, desc="Processing Conversations"):
+        print(f"Processing: {recording_id}")
+        speaker_cuts = defaultdict(list)
+        for cut in cuts_per_convo:
+            for sup in cut.supervisions:
+                speaker_cuts[sup.speaker].append(cut)
             
-        spk_A_id, spk_B_id = speaker_ids[0], speaker_ids[1]
-
-        # 4. Extract and concatenate audio and text for each speaker
-        text_A, text_B = [], []
-        audio_A, audio_B = [], []
-
-        for sup in conv_supervisions:
-            audio_segment = torch.from_numpy(sup.load_audio()).float()
-            
-            if sup.speaker == spk_A_id:
-                text_A.append(sup.text)
-                audio_A.append(audio_segment)
-            else:
-                text_B.append(sup.text)
-                audio_B.append(audio_segment)
-
-        if not audio_A or not audio_B:
+        print(f"Found {len(speaker_cuts)} speakers in {recording_id}")
+        if len(speaker_cuts) != 2:
             continue
-        
-        full_audio_A = torch.cat(audio_A, dim=1)
-        full_audio_B = torch.cat(audio_B, dim=1)
-        
-        # Resample audio
-        source_sr = conv_supervisions[0].sampling_rate
+
+        spk_A, spk_B = sorted(speaker_cuts)
+        cuts_A = append_cuts(speaker_cuts[spk_A])
+        cuts_B = append_cuts(speaker_cuts[spk_B])
+
+        audio_A = torch.from_numpy(cuts_A.load_audio()).float()
+        audio_B = torch.from_numpy(cuts_B.load_audio()).float()
+
+        source_sr = cuts_A.sampling_rate
         if source_sr != target_sample_rate:
             resampler = torchaudio.transforms.Resample(source_sr, target_sample_rate)
-            full_audio_A = resampler(full_audio_A)
-            full_audio_B = resampler(full_audio_B)
-            
-        # 5. Calculate durations. No padding is applied here.
-        # The duration for the DynamicBatchSampler will be the *longer* of the two.
-        duration_A_sec = full_audio_A.shape[1] / target_sample_rate
-        duration_B_sec = full_audio_B.shape[1] / target_sample_rate
-        max_duration_sec = max(duration_A_sec, duration_B_sec)
-        
-        # 6. Save the prepared audio files
+            audio_A = resampler(audio_A)
+            audio_B = resampler(audio_B)
+
+        duration = max(audio_A.shape[1], audio_B.shape[1]) / target_sample_rate
+
         wav_A_path = output_wav_path / f"{recording_id}_A.wav"
         wav_B_path = output_wav_path / f"{recording_id}_B.wav"
-        
-        torchaudio.save(wav_A_path, full_audio_A, target_sample_rate)
-        torchaudio.save(wav_B_path, full_audio_B, target_sample_rate)
-        
-        # 7. Collate metadata
+        torchaudio.save(str(wav_A_path), audio_A, target_sample_rate)
+        torchaudio.save(str(wav_B_path), audio_B, target_sample_rate)
+
+        text_A = " ".join([sup.text for c in speaker_cuts[spk_A] for sup in c.supervisions])
+        text_B = " ".join([sup.text for c in speaker_cuts[spk_B] for sup in c.supervisions])
+
         metadata.append({
             "id": recording_id,
             "path_A": str(wav_A_path),
-            "text_A": " ".join(text_A),
+            "text_A": text_A,
             "path_B": str(wav_B_path),
-            "text_B": " ".join(text_B),
-            "duration": max_duration_sec
+            "text_B": text_B,
+            "duration": duration
         })
 
     if not metadata:
-        print("No valid conversations were processed. Please check your manifests and data.")
+        print("No valid conversations were processed.")
         return
-        
-    # 8. Create and save the final output files
-    print("\nCreating final output files...")
-    
+
     df = pd.DataFrame(metadata)
     df.to_csv(output_path / "metadata.csv", index=False)
     print(f"Saved metadata to {output_path / 'metadata.csv'}")
 
-    # Create raw.arrow as a single file
-    dataset = Dataset.from_pandas(df.drop(columns=['id']))
-    dataset.to_file(str(output_path / "raw.arrow"))
-    print(f"Saved dataset to {output_path / 'raw.arrow'}")
+    file_raw = output_path / "raw.arrow"
+    with ArrowWriter(path=file_raw, writer_batch_size=1) as writer:
+        for rec in tqdm(metadata, desc="Writing raw.arrow"):
+            writer.write(rec)
+    print(f"Saved dataset to {file_raw}")
 
-    # Create duration.json
-    duration_data = {"duration": df["duration"].tolist()}
     with open(output_path / "duration.json", "w") as f:
-        json.dump(duration_data, f)
+        json.dump({"duration": df["duration"].tolist()}, f)
     print(f"Saved durations to {output_path / 'duration.json'}")
-    
     print("\n--- Dataset preparation complete! ---")
 
-
-if __name__ == "__main__":
+def main():
     args = get_args()
-    
-    # Run the main preparation function
     prepare_fisher(
-        fisher_path=args.fisher_path, 
-        output_path=args.output_path, 
-        target_sample_rate=args.target_sample_rate
+        fisher_path=args.fisher_path,
+        output_path=args.output_path,
+        target_sample_rate=args.target_sample_rate,
+        num_samples=args.num_samples,
+        supervisions_path=args.supervisions_path
     )
 
-    # Copy vocab file if path is provided
     if args.vocab_path:
         vocab_source = Path(args.vocab_path)
         if vocab_source.is_file():
-            vocab_dest = Path(args.output_path) / vocab_source.name
-            shutil.copy(vocab_source, vocab_dest)
-            print(f"Copied vocab file to {vocab_dest}")
+            shutil.copy(vocab_source, Path(args.output_path) / vocab_source.name)
+            print(f"Copied vocab file to {args.output_path}/{vocab_source.name}")
         else:
             print(f"Warning: Vocab file not found at {args.vocab_path}")
+
+if __name__ == "__main__":
+    main()
