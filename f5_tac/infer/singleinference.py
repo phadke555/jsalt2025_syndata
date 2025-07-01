@@ -3,6 +3,7 @@
 
 # text to generate for A and B
 
+import argparse
 
 import os
 import torch
@@ -16,7 +17,7 @@ print(os.getcwd())
 # -----------------------------------------------------------------------------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 root_dir = ""
-out_dir = "/work/users/r/p/rphadke/JSALT/outputs/fisher_jointspeaker/inference_3"
+out_dir = "/work/users/r/p/rphadke/JSALT/outputs/fisher_jointspeaker/inference_4"
 os.makedirs(out_dir, exist_ok=True)
 
 # your model import
@@ -72,7 +73,7 @@ wav_B = prep_wav(ref_wav_B, sr)
 ref_text_A = "and i generally prefer eating at home. hello andy. how are you? good do you have any idea what's going on yeah. "
 gen_text_A = " I'm looking forward to the rest of my day. "
 ref_text_B = "hi my name is andy. good, how are you doing? no, i guess we're supposed to talk about food now. "
-gen_text_B = " That is good, what you have planned? "
+gen_text_B = " That is good, what do you have planned? "
 
 full_texts = [
   ref_text_A + gen_text_A,   

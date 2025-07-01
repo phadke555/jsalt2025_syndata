@@ -1,7 +1,7 @@
 # configs/finetuning_config.yaml
 exp_name:                 F5TTS_v1_Base
 data_root:                /work/users/r/p/rphadke/JSALT
-dataset_name:             fisher_chunks_singlespeaker
+dataset_name:             fisher_chunks_singlespeaker_test
 finetune:                 true
 logger:                   wandb
 learning_rate:            5e-6
@@ -15,4 +15,4 @@ save_per_updates:         1000
 keep_last_n_checkpoints:  0
 last_per_updates:         5000
 tokenizer:                custom
-tokenizer_path:           /work/users/r/p/rphadke/JSALT/fisher_chunks_singlespeaker/vocab.txt
+tokenizer_path:           /work/users/r/p/rphadke/JSALT/fisher_chunks_singlespeaker_test/vocab.txt

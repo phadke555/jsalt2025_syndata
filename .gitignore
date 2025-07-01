@@ -18,3 +18,4 @@ prepare_manifests.slurm
 finetune_f5tac.slurm
 inference_f5tac.slurm
 unittest_lc.slurm
+f5_tac/train/load_checkpoint.py
