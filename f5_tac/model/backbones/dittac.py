@@ -34,7 +34,7 @@ class DiTWithTAC(DiT):
                 dim          = self.dim,
                 heads        = blk.attn.heads,
                 dim_head     = blk.attn.inner_dim // blk.attn.heads,
-                ff_mult      = 4,
+                ff_mult      = 2,
                 dropout      = 0.1,
                 qk_norm      = blk.attn.q_norm,
                 pe_attn_head = blk.attn.processor.pe_attn_head,

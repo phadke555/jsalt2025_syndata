@@ -75,6 +75,8 @@ class TAC(torch.nn.Module):
         )
         self.norm = get_layer(norm_type)(in_channels)
 
+        self.alpha = torch.nn.Parameter(torch.tensor(1e-6))
+
     def forward(self, inp, mask=None):
         # bsz, mics, frames, channels
         bsz, mics, channels = inp.shape
@@ -97,7 +99,7 @@ class TAC(torch.nn.Module):
             bsz * mics,
             2 * self.hid_channels,
         )
-        out = self.norm(self.transform_final(transformed)) + inp.reshape(
+        out = self.norm(self.transform_final(transformed)) * self.alpha + inp.reshape(
             bsz * mics, channels
         )
         return out.reshape(bsz, mics, channels)

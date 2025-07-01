@@ -93,9 +93,10 @@ def main():
         n_fft=1024, hop_length=256, win_length=1024,
         n_mel_channels=100, target_sample_rate=24000, mel_spec_type="vocos",
     )
+
     
     dit_cfg = dict(
-        dim=1024, depth=22, heads=16, ff_mult=2, text_dim=512, conv_layers=4,
+        dim=1024, depth=22, heads=16, ff_mult=2, text_dim=512, conv_layers=4
     )
 
     # --- 4. Instantiate Your New Models ---
@@ -113,30 +114,33 @@ def main():
         vocab_char_map=vocab_char_map,
     )
     
+
+
     # --- 5. CRITICAL: Load Pretrained Weights into the New Architecture ---
     print("Loading pretrained weights...")
+    # 1) Load the raw checkpoint
     if local_pretrain_path.endswith(".safetensors"):
         from safetensors.torch import load_file
-        pretrained_state_dict = load_file(local_pretrain_path, device="cpu")
+        ckpt = load_file(local_pretrain_path, device="cpu")
     else:
-        pretrained_state_dict = torch.load(local_pretrain_path, map_location="cpu")
-    
-    # Handle checkpoints that might be nested (e.g., inside 'model_state_dict' or 'ema_model_state_dict')
-    if "model_state_dict" in pretrained_state_dict:
-        pretrained_state_dict = pretrained_state_dict["model_state_dict"]
-    elif "ema_model_state_dict" in pretrained_state_dict:
-        pretrained_state_dict = pretrained_state_dict["ema_model_state_dict"]
-        # Remove 'ema_model.' prefix if present
-        pretrained_state_dict = {k.replace("ema_model.", ""): v for k, v in pretrained_state_dict.items()}
+        ckpt = torch.load(local_pretrain_path, map_location="cpu")
 
-    # --- MODIFICATION: Use strict=False for cleaner loading ---
-    # This will load all matching keys and ignore the new TAC layers.
-    incompatible_keys = model.load_state_dict(pretrained_state_dict, strict=False)
-    
-    print(f"Loaded pretrained model with status: {incompatible_keys}")
-    print(f"Missing keys (expected: TAC layers): {incompatible_keys.missing_keys[:5]}...")
-    if incompatible_keys.unexpected_keys:
-        print(f"WARNING: Unexpected keys in checkpoint: {incompatible_keys.unexpected_keys[:5]}...")
+    # 2) Unwrap any nesting
+    state = (
+        ckpt.get("model_state_dict", 
+        ckpt.get("ema_model_state_dict", ckpt))
+    )
+
+    # 3) Strip an ‘ema_model.’ prefix if it sneaked in
+    state = {k.replace("ema_model.", ""): v for k, v in state.items()}
+
+
+    # 5) Finally load with strict=False to pick up whatever lines up
+    incompatible = model.load_state_dict(state, strict=False)
+
+    print("✔ loaded partial state:")
+    print("  • missing   (should only be tac module keys)   :", incompatible.missing_keys[:5], "…")
+    print("  • unexpected  :", incompatible.unexpected_keys[:5], "…")
 
 
     # --- 6. Instantiate Trainer ---
