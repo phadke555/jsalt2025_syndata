@@ -17,3 +17,4 @@ f5_tac/model/backbones/__pycache__/
 prepare_manifests.slurm
 finetune_f5tac.slurm
 inference_f5tac.slurm
+unittest_lc.slurm
