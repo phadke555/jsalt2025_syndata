@@ -7,6 +7,8 @@ from functools import partial
 import torch
 from cached_path import cached_path
 
+import yaml
+
 # --- MODIFICATION: Import your new modules ---
 from f5_tac.model.cfm import CFMWithTAC
 from f5_tac.model.backbones.dittac import DiTWithTAC
@@ -78,13 +80,11 @@ def main():
     checkpoint_path = os.path.join(args.data_root, "ckpts", args.dataset_name, args.exp_name)
     os.makedirs(checkpoint_path, exist_ok=True)
 
+    local_pretrain_path = args.pretrain
     print(f"Using pretrained model from: {args.pretrain}")
     
     # --- 2. Setup Tokenizer ---
-    tokenizer, vocab_size = get_tokenizer(
-        tokenizer_path=args.tokenizer_path,
-        tokenizer_type=args.tokenizer,
-    )
+    vocab_char_map, vocab_size = get_tokenizer(args.tokenizer_path,args.tokenizer)
     print(f"Loaded tokenizer with vocab size: {vocab_size}")
 
     # --- 3. Define Model Architecture and Mel Spectrogram settings ---
@@ -110,7 +110,7 @@ def main():
     model = CFMWithTAC(
         transformer=transformer_backbone,
         mel_spec_kwargs=mel_spec_kwargs,
-        vocab_char_map=tokenizer.char_map,
+        vocab_char_map=vocab_char_map,
     )
     
     # --- 5. CRITICAL: Load Pretrained Weights into the New Architecture ---
@@ -144,13 +144,13 @@ def main():
     trainer = Trainer(
         model,
         epochs=args.epochs,
-        learning_rate=args.learning_rate,
+        learning_rate=float(args.learning_rate),
         checkpoint_path=checkpoint_path,
-        save_per_updates=args.save_per_updates,
-        batch_size_per_gpu=args.batch_size_per_gpu,
-        batch_size_type="frame",
-        max_samples=args.max_samples,
-        grad_accumulation_steps=args.grad_accumulation_steps,
+        save_per_updates=int(args.save_per_updates),
+        batch_size_per_gpu=int(args.batch_size_per_gpu),
+        batch_size_type=args.batch_size_type,
+        max_samples=int(args.max_samples),
+        grad_accumulation_steps=int(args.grad_accumulation_steps),
         max_grad_norm=1.0, # max_grad_norm is not in args
         logger=args.logger,
         wandb_project=f"finetune_{args.exp_name}",
@@ -161,9 +161,14 @@ def main():
     # --- 7. Load Dataset and Start Training ---
     print("Loading dataset...")
     train_dataset = load_conversation_dataset(
-        dataset_path=args.dataset_path,
+        dataset_path=dataset_path,
         mel_spec_kwargs=mel_spec_kwargs
     )
+    print("Train dataset length:", len(train_dataset))
+    for i in range(len(train_dataset)):
+        mel_A = train_dataset[i]["mel_A"]
+        mel_B = train_dataset[i]["mel_B"]
+        print(f"Sample {i} | mel_A shape: {mel_A.shape} | mel_B shape: {mel_B.shape}")
     
     print("Starting training...")
     trainer.train(

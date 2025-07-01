@@ -207,12 +207,16 @@ if args.random_ref:
     lines = [l.strip() for l in open(meta_csv, "r", encoding="utf-8") if l.strip()]
 
     choice = random.choice(lines)
-    fname, text = choice.split("|", 1)
+    parts = choice.split(",")
+    fname = parts[0]
+    text = ",".join(parts[1:-1])
 
-    # keep sampling until we get >5 words
-    while len(text.split()) < 10:
-        choice = random.choice(lines)
-        fname, text = choice.split("|", 1)
+    # # keep sampling until we get >5 words
+    # while len(text.split()) < 10:
+    #     choice = random.choice(lines)
+    #     parts = choice.split(",")
+    #     fname = parts[0]
+    #     text = ",".join(parts[1:-1])
 
     # point ref_audio/ref_text to that sample:
     ref_audio = os.path.join(os.path.dirname(meta_csv), "wavs", fname)

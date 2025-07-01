@@ -59,6 +59,7 @@ class DiTWithTAC(DiT):
         cache: bool = False,
         spk_mask: bool["b s"] | None = None,  # NEW: (b, s) boolean mask
     ):
+        text = text.long()
         batch, seq_len = x.shape[0], x.shape[1]
         if time.ndim == 0:
             time = time.repeat(batch)

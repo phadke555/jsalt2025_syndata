@@ -30,7 +30,11 @@ class DiTBlockWithTAC(DiTBlock):
             B = B2 // S
 
         # per active speaker fusion
-        x = x.view(B, S, T, D) # -> (B, S, T, D)
+        # x = x.view(B, S, T, D) # -> (B, S, T, D)
+        # Convert (B*S, T, D) → (B, S, T, D) using chunk
+        x = torch.stack(torch.chunk(x, S, dim=0), dim=1)
+
+        
         x = x.permute(0, 2, 1, 3) # -> (B, T, S, D)
         x = x.reshape(B*T, S, D) 
 

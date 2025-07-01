@@ -64,7 +64,7 @@ def parse_args():
     parser.add_argument(
         "--keep_last_n_checkpoints",
         type=int,
-        default=-1,
+        default=0,
         help="-1 to keep all, 0 to not save intermediate, > 0 to keep last N checkpoints",
     )
     parser.add_argument("--last_per_updates", type=int, default=5000, help="Save last checkpoint every N updates")
@@ -228,15 +228,15 @@ def main():
     trainer = Trainer(
         model,
         args.epochs,
-        args.learning_rate,
-        num_warmup_updates=args.num_warmup_updates,
-        save_per_updates=args.save_per_updates,
+        float(args.learning_rate),
+        num_warmup_updates=int(args.num_warmup_updates),
+        save_per_updates=int(args.save_per_updates),
         keep_last_n_checkpoints=args.keep_last_n_checkpoints,
         checkpoint_path=checkpoint_path,
-        batch_size_per_gpu=args.batch_size_per_gpu,
+        batch_size_per_gpu=int(args.batch_size_per_gpu),
         batch_size_type=args.batch_size_type,
-        max_samples=args.max_samples,
-        grad_accumulation_steps=args.grad_accumulation_steps,
+        max_samples=int(args.max_samples),
+        grad_accumulation_steps=int(args.grad_accumulation_steps),
         max_grad_norm=args.max_grad_norm,
         logger=args.logger,
         wandb_project=args.dataset_name,

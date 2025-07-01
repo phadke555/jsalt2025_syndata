@@ -19,7 +19,6 @@ from f5_tac.model.cfm import CFMWithTAC
 from f5_tts.model.dataset import DynamicBatchSampler, collate_fn
 from f5_tts.model.utils import default, exists
 
-
 # trainer
 
 
@@ -146,10 +145,10 @@ class Trainer:
 
     def save_checkpoint(self, update, last=False):
         self.accelerator.wait_for_everyone()
-        if self.is_main:
+        if self.accelerator.is_main_process:
             checkpoint = dict(
                 model_state_dict=self.accelerator.unwrap_model(self.model).state_dict(),
-                optimizer_state_dict=self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"]),
+                optimizer_state_dict=self.optimizer.state_dict(),
                 ema_model_state_dict=self.ema_model.state_dict(),
                 scheduler_state_dict=self.scheduler.state_dict(),
                 update=update,
@@ -225,14 +224,14 @@ class Trainer:
             if key in checkpoint["ema_model_state_dict"]:
                 del checkpoint["ema_model_state_dict"][key]
 
-        if self.is_main:
+        if self.accelerator.is_main_process:
             self.ema_model.load_state_dict(checkpoint["ema_model_state_dict"])
 
         if "update" in checkpoint or "step" in checkpoint:
             # patch for backward compatibility, with before f992c4e
             if "step" in checkpoint:
                 checkpoint["update"] = checkpoint["step"] // self.grad_accumulation_steps
-                if self.grad_accumulation_steps > 1 and self.is_main:
+                if self.grad_accumulation_steps > 1 and self.accelerator.is_main_process:
                     print(
                         "F5-TTS WARNING: Loading checkpoint saved with per_steps logic (before f992c4e), will convert to per_updates according to grad_accumulation_steps setting, may have unexpected behaviour."
                     )
@@ -259,7 +258,7 @@ class Trainer:
         gc.collect()
         return update
 
-    def train(self, train_dataset: Dataset, collate_fn, num_workers=16, resumable_with_seed: int = None):
+    def train(self, train_dataset: Dataset, collate_fn, num_workers=2, resumable_with_seed: int = None):
         if self.log_samples:
             from f5_tts.infer.utils_infer import cfg_strength, load_vocoder, nfe_step, sway_sampling_coef
 
@@ -305,6 +304,7 @@ class Trainer:
                 persistent_workers=True,
                 batch_sampler=batch_sampler,
             )
+            print("Train dataloader length:", len(train_dataloader))
         else:
             raise ValueError(f"batch_size_type must be either 'sample' or 'frame', but received {self.batch_size_type}")
 
@@ -372,10 +372,7 @@ class Trainer:
                         dur_loss = self.duration_predictor(mel_spec, lens=batch.get("durations"))
                         self.accelerator.log({"duration loss": dur_loss.item()}, step=global_update)
 
-                    # loss, cond, pred = self.model(
-                    #     mel_spec, text=text_inputs, lens=mel_lengths, noise_scheduler=self.noise_scheduler
-                    # )
-                    # TODO: calculate loss_a and loss_b
+
                     # --- FIXED: Call the new model and unpack all return values ---
                     loss_A, loss_B, cond_A, pred_A, cond_B, pred_B = self.model(
                         mel_A=mel_A,
@@ -386,7 +383,7 @@ class Trainer:
                         mel_lengths_B=mel_lengths_B,
                         noise_scheduler=self.noise_scheduler,
                     )
-                    total_loss = loss_a + loss_b
+                    total_loss = loss_A + loss_B
                     self.accelerator.backward(total_loss)
 
                     if self.max_grad_norm > 0 and self.accelerator.sync_gradients:
@@ -397,12 +394,12 @@ class Trainer:
                     self.optimizer.zero_grad()
 
                 if self.accelerator.sync_gradients:
-                    if self.is_main:
+                    if self.accelerator.is_main_process:
                         self.ema_model.update()
 
                     global_update += 1
                     progress_bar.update(1)
-                    progress_bar.set_postfix(update=str(global_update), loss=loss.item())
+                    progress_bar.set_postfix(update=str(global_update), loss=total_loss.item())
 
                 if self.accelerator.is_local_main_process:
                     self.accelerator.log(
@@ -415,7 +412,7 @@ class Trainer:
                         step=global_update
                     )
                     if self.logger == "tensorboard":
-                        self.writer.add_scalar("loss", loss.item(), global_update)
+                        self.writer.add_scalar("loss", total_loss.item(), global_update)
                         self.writer.add_scalar("lr", self.scheduler.get_last_lr()[0], global_update)
 
                 if global_update % self.last_per_updates == 0 and self.accelerator.sync_gradients:
@@ -426,13 +423,11 @@ class Trainer:
 
                     # NOTE: this might need to be updated
                     if self.log_samples and self.accelerator.is_local_main_process:
-                        ref_audio_len = mel_lengths[0]
-                        infer_text = [
-                            text_inputs[0] + ([" "] if isinstance(text_inputs[0], list) else " ") + text_inputs[0]
-                        ]
+                        ref_audio_len = mel_lengths_A
+                        infer_text = [ text_A[0] + " " + text_A[0] ]
                         with torch.inference_mode():
                             generated, _ = self.accelerator.unwrap_model(self.model).sample(
-                                cond=mel_spec[0][:ref_audio_len].unsqueeze(0),
+                                cond=mel_A[0:1, :ref_audio_len, :],
                                 text=infer_text,
                                 duration=ref_audio_len * 2,
                                 steps=nfe_step,
@@ -441,10 +436,10 @@ class Trainer:
                             )
                             generated = generated.to(torch.float32)
                             gen_mel_spec = generated[:, ref_audio_len:, :].permute(0, 2, 1).to(self.accelerator.device)
-                            ref_mel_spec = batch["mel"][0].unsqueeze(0)
+                            ref_mel_spec = batch["mel_A"][0:1]
                             if self.vocoder_name == "vocos":
-                                gen_audio = vocoder.decode(gen_mel_spec).cpu()
-                                ref_audio = vocoder.decode(ref_mel_spec).cpu()
+                                gen_audio = vocoder.decode(gen_mel_spec).detach().cpu()
+                                ref_audio = vocoder.decode(ref_mel_spec).detach().cpu()
                             elif self.vocoder_name == "bigvgan":
                                 gen_audio = vocoder(gen_mel_spec).squeeze(0).cpu()
                                 ref_audio = vocoder(ref_mel_spec).squeeze(0).cpu()

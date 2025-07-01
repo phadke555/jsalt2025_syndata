@@ -78,7 +78,7 @@ class TAC(torch.nn.Module):
     def forward(self, inp, mask=None):
         # bsz, mics, frames, channels
         bsz, mics, channels = inp.shape
-        transformed = self.transform_shared(inp.view(bsz * mics, channels)).view(
+        transformed = self.transform_shared(inp.reshape(bsz * mics, channels)).reshape(
             bsz, mics, self.hid_channels
         )
         if mask is not None:
@@ -93,11 +93,11 @@ class TAC(torch.nn.Module):
             average = transformed.mean(1)
 
         average = self.transform_avg(average.unsqueeze(1).repeat(1, mics, 1))
-        transformed = torch.cat((transformed, average), -1).view(
+        transformed = torch.cat((transformed, average), -1).reshape(
             bsz * mics,
             2 * self.hid_channels,
         )
-        out = self.norm(self.transform_final(transformed)) + inp.view(
+        out = self.norm(self.transform_final(transformed)) + inp.reshape(
             bsz * mics, channels
         )
-        return out.view(bsz, mics, channels)
+        return out.reshape(bsz, mics, channels)

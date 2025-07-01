@@ -1,16 +1,21 @@
+import os
 import torch
 import torchaudio
 import json
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import Dataset
 from torch.nn.utils.rnn import pad_sequence
 from datasets import Dataset as Dataset_
+from datasets import load_from_disk
 from f5_tts.model.utils import default
+from f5_tts.model.modules import MelSpec
+import math
 
 class FisherDataset(Dataset):
     def __init__(
         self,
-        fisher_dataset: Dataset,
+        train_dataset: Dataset,
         durations=None,
         target_sample_rate=24_000,
         hop_length=256,
@@ -21,7 +26,7 @@ class FisherDataset(Dataset):
         preprocessed_mel=False,
         mel_spec_module: nn.Module | None = None,
     ):
-        self.data = fisher_dataset
+        self.data = train_dataset
         self.durations = durations
         self.target_sample_rate = target_sample_rate
         self.hop_length = hop_length
@@ -42,7 +47,7 @@ class FisherDataset(Dataset):
                     mel_spec_type=mel_spec_type,
                 ),
             )
-        
+
     def get_frame_len(self, index):
         if (
             self.durations is not None
@@ -62,39 +67,27 @@ class FisherDataset(Dataset):
         """
         Loads, preprocesses audio, and returns a single conversation pair with raw text.
         """
-        while True:
-            try:
-                item = self.data[index]
-                duration = self.durations[index]
+        item = self.data[index]
 
-                if not (0.3 <= duration <= 30.0):
-                    index = (index + 1) % len(self)
-                    continue
+        if self.preprocessed_mel:
+            mel_A = torch.tensor(item["mel_A"])
+            mel_B = torch.tensor(item["mel_B"])
+        else:
+            mel_A = self._process_audio(item["speaker_A_wav"])
+            mel_B = self._process_audio(item["speaker_B_wav"])
 
-                if self.preprocessed_mel:
-                    # Assuming precomputed mels are stored in the arrow file
-                    mel_A = torch.tensor(item["mel_A"])
-                    mel_B = torch.tensor(item["mel_B"])
-                else:
-                    mel_A = self._process_audio(item['path_A'])
-                    mel_B = self._process_audio(item['path_B'])
-
-                text_A = item['text_A']
-                text_B = item['text_B']
-                
-                return {
-                    "mel_A": mel_A,
-                    "text_A": text_A,
-                    "mel_B": mel_B,
-                    "text_B": text_B,
-                }
-
-            except Exception as e:
-                print(f"Warning: Skipping index {index} due to error: {e}")
-                index = (index + 1) % len(self)
+        return {
+            "mel_A": mel_A,
+            "text_A": item["speaker_A_text"],
+            "mel_B": mel_B,
+            "text_B": item["speaker_B_text"],
+        }
 
 def load_conversation_dataset(
     dataset_path: str,
+    tokenizer: str = "custom",
+    audio_type: str = "raw",
+    mel_spec_module: nn.Module | None = None,
     mel_spec_kwargs: dict = None,
 ) -> FisherDataset:
     """
@@ -102,16 +95,17 @@ def load_conversation_dataset(
     For Custom Dataset Path
     """
     print("Loading conversation dataset...")
-    raw_path = os.path.join(dataset_path, "raw")
+    raw_arrow = os.path.join(dataset_path, "raw.arrow")
     duration_path = os.path.join(dataset_path, "duration.json")
     
-    try:
-        train_dataset = load_from_disk(raw_path)
-    except FileNotFoundError:
-        train_dataset = Dataset_.from_file(f"{raw_path}.arrow")
+    # Try loading a HuggingFace dataset directory first; otherwise read the raw.arrow directly:
+    if os.path.isdir(os.path.join(dataset_path, "raw")):
+        train_dataset = load_from_disk(os.path.join(dataset_path, "raw"))
+    else:
+        train_dataset = Dataset_.from_file(raw_arrow)
 
     with open(duration_path, "r", encoding="utf-8") as f:
-        durations = json.load(f)["duration"]
+        durations = json.load(f)["durations"]
         
     mel_spec_module = MelSpec(**mel_spec_kwargs)
 
