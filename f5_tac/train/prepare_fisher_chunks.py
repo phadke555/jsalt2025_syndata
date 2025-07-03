@@ -42,9 +42,11 @@ def parse_args():
                    help="Discard windows shorter than this")
     p.add_argument("--target-sample-rate", type=int, default=24000,
                    help="Resample (lazy) to this sampling rate")
-    p.add_argument("--max-conversations", type=int, default=4,
+    p.add_argument("--max-conversations", type=int, default=None,
                    help="Process only the first N conversations (for testing)")
     p.add_argument("--vocab_path", type=str, default=None)
+    p.add_argument("--eval-ratio", type=float, default=0.1,
+                   help="Fraction of conversations to use for dev/eval set")
     return p.parse_args()
 
 
@@ -84,7 +86,7 @@ def main():
         conv_id = rec.id.rsplit("-", 1)[0]
         if conv_id not in unique_conv_ids:
             unique_conv_ids.append(conv_id)
-        if len(unique_conv_ids) >= args.max_conversations:
+        if args.max_conversations and len(unique_conv_ids) >= args.max_conversations:
             break
     logging.info(f"Limiting to first {len(unique_conv_ids)} conversations: {unique_conv_ids}")
     cuts = cuts.filter(lambda c: c.recording_id.rsplit("-", 1)[0] in unique_conv_ids)

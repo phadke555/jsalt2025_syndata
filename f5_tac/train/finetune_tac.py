@@ -77,7 +77,7 @@ def main():
                 raise ValueError(f"Unknown config key: {key}")
     
     dataset_path = os.path.join(args.data_root, args.dataset_name) if args.data_root else args.dataset_name
-    checkpoint_path = os.path.join(args.data_root, "ckpts", args.dataset_name, args.exp_name)
+    checkpoint_path = os.path.join(args.data_root, "ckpts", args.dataset_name)
     os.makedirs(checkpoint_path, exist_ok=True)
 
     local_pretrain_path = args.pretrain
@@ -157,7 +157,7 @@ def main():
         grad_accumulation_steps=int(args.grad_accumulation_steps),
         max_grad_norm=1.0, # max_grad_norm is not in args
         logger=args.logger,
-        wandb_project=f"finetune_{args.exp_name}",
+        wandb_project=f"finetune_f5_2speaker",
         wandb_run_name=args.exp_name,
         log_samples=args.log_samples,
     )
