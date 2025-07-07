@@ -14,8 +14,14 @@ unittest.slurm
 f5_tac/__pycache__/
 f5_tac/model/__pycache__/
 f5_tac/model/backbones/__pycache__/
+f5_tac/eval/__pycache__/
+f5_tac/infer/__pycache__/
+f5_tac/configs/__pycache__/
 prepare_manifests.slurm
 finetune_f5tac.slurm
 inference_f5tac.slurm
 unittest_lc.slurm
 f5_tac/train/load_checkpoint.py
+batch_infer.slurm
+eval_metrics.slurm
+diarize.slurm
