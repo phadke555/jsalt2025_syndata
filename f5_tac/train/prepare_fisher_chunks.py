@@ -8,7 +8,6 @@ Use Lhotse CutSet to:
   - Process only the first few conversations (configurable via --max-conversations).
   - Write out per-window WAVs and metadata (incl. speaker A/B WAV paths & texts).
 """
-
 import argparse
 import shutil
 import logging
@@ -88,6 +87,7 @@ def main():
             unique_conv_ids.append(conv_id)
         if args.max_conversations and len(unique_conv_ids) >= args.max_conversations:
             break
+    unique_conv_ids = unique_conv_ids[5000:args.max_conversations]
     logging.info(f"Limiting to first {len(unique_conv_ids)} conversations: {unique_conv_ids}")
     cuts = cuts.filter(lambda c: c.recording_id.rsplit("-", 1)[0] in unique_conv_ids)
 

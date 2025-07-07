@@ -142,6 +142,15 @@ def main():
     print("  • missing   (should only be tac module keys)   :", incompatible.missing_keys[:5], "…")
     print("  • unexpected  :", incompatible.unexpected_keys[:5], "…")
 
+    # Freeze initial transformer layers
+    freeze_layers = 8  # freeze first 12 layers
+    for i, block in enumerate(transformer_backbone.transformer_blocks):
+        if i < freeze_layers:
+            for name, param in block.named_parameters():
+                if "norm" not in name and "tac" not in name:  # keep LayerNorm trainable
+                    param.requires_grad = False
+    print(f"✔️ Frozen first {freeze_layers} layers of DiTWithTAC")
+
 
     # --- 6. Instantiate Trainer ---
     print("Initializing Trainer...")
@@ -169,10 +178,6 @@ def main():
         mel_spec_kwargs=mel_spec_kwargs
     )
     print("Train dataset length:", len(train_dataset))
-    for i in range(len(train_dataset)):
-        mel_A = train_dataset[i]["mel_A"]
-        mel_B = train_dataset[i]["mel_B"]
-        print(f"Sample {i} | mel_A shape: {mel_A.shape} | mel_B shape: {mel_B.shape}")
     
     print("Starting training...")
     trainer.train(

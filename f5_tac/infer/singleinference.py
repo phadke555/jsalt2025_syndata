@@ -126,14 +126,39 @@ wav_A = prep_wav(ref_wav_A, sr)
 wav_B = prep_wav(ref_wav_B, sr)
 
 ref_text_A = speaker_A_text
-gen_text_A = " I'm looking forward to the rest of my day. I plan to go to the gym "
+gen_text_A = "What are you cooking? It smells amazing. Simple? It smells like a five-star restaurant in here. Sure, as long as I get to taste-test. No promises. Cheese is my weakness."
 ref_text_B = speaker_B_text
-gen_text_B = " That is good, what do you have planned? "
+gen_text_B = "Just a simple pasta with garlic and olive oil. Want to help? You can chop some basil for me. Deal. But no stealing the parmesan this time. Then I better hide the mozzarella too."
 
 full_texts = [
   ref_text_A + gen_text_A,   
   ref_text_B + gen_text_B,   
 ]
+
+
+# Path to a single transcript.txt file in the output dir
+transcript_file = os.path.join(out_dir, "transcript.txt")
+
+# If transcript.txt does not exist, create it and write a header
+if not os.path.exists(transcript_file):
+    with open(transcript_file, "w", encoding="utf-8") as f:
+        f.write("Transcript for all windows\n")
+        f.write("=" * 30 + "\n\n")
+
+# Format the current window’s transcript
+txt_content = (
+    f"=== ==== ===\n"
+    f"SPEAKER A\n"
+    f"REF: {ref_text_A}\n"
+    f"GEN: {gen_text_A}\n\n"
+    f"SPEAKER B\n"
+    f"REF: {ref_text_B}\n"
+    f"GEN: {gen_text_B}\n\n"
+)
+
+# Append this window’s content to transcript.txt
+with open(transcript_file, "a", encoding="utf-8") as f:
+    f.write(txt_content)
 
 
 # -----------------------------------------------------------------------------
