@@ -33,7 +33,7 @@ parser.add_argument(
     "--ckpt_path",
     type=str,
     default=None,
-    help="Base directory where your `checkpoint` lives (so we can find metadata.csv and wavs/)."
+    help="Base directory where your `checkpoint` lives."
 )
 
 parser.add_argument(
@@ -107,10 +107,15 @@ df = pd.read_csv(metadata_path)
 row = df.sample(n=1).iloc[0]
 
 # 4) pull out the paths & texts
-speaker_A_wav = row["speaker_A_wav"]
-speaker_A_text = row["speaker_A_text"]
-speaker_B_wav = row["speaker_B_wav"]
-speaker_B_text = row["speaker_B_text"]
+# speaker_A_wav = row["speaker_A_wav"]
+# speaker_A_text = row["speaker_A_text"]
+# speaker_B_wav = row["speaker_B_wav"]
+# speaker_B_text = row["speaker_B_text"]
+
+speaker_A_wav = "/work/users/r/p/rphadke/JSALT/fisher_chunks/wavs/fe_03_00001_0000_A.wav"
+speaker_A_text = "and i generally prefer eating at home hello andy how are you good do you have any idea what's going on "
+speaker_B_wav = "/work/users/r/p/rphadke/JSALT/fisher_chunks/wavs/fe_03_00001_0000_B.wav"
+speaker_B_text = "hi my name is andy good how are you doing no i guess we're supposed to talk about food now"
 
 ref_wav_A, sr = torchaudio.load(speaker_A_wav)  # shape [1, N]
 ref_wav_B, _  = torchaudio.load(speaker_B_wav)  # assume same sr
@@ -126,9 +131,11 @@ wav_A = prep_wav(ref_wav_A, sr)
 wav_B = prep_wav(ref_wav_B, sr)
 
 ref_text_A = speaker_A_text
-gen_text_A = "What are you cooking? It smells amazing. Simple? It smells like a five-star restaurant in here. Sure, as long as I get to taste-test. No promises. Cheese is my weakness."
+# gen_text_A = "What are you cooking? It smells amazing. Simple? It smells like a five-star restaurant in here. Sure, as long as I get to taste-test. No promises. Cheese is my weakness."
+gen_text_A = speaker_A_text
 ref_text_B = speaker_B_text
-gen_text_B = "Just a simple pasta with garlic and olive oil. Want to help? You can chop some basil for me. Deal. But no stealing the parmesan this time. Then I better hide the mozzarella too."
+# gen_text_B = "Just a simple pasta with garlic and olive oil. Want to help? You can chop some basil for me. Deal. But no stealing the parmesan this time. Then I better hide the mozzarella too."
+gen_text_B = speaker_B_text
 
 full_texts = [
   ref_text_A + gen_text_A,   
@@ -246,8 +253,9 @@ torchaudio.save(os.path.join(out_dir, "speakerB_generated.wav"), wav_gen_B, sr)
 max_len = max(wav_gen_A.shape[-1], wav_gen_A.shape[-1])
 A_pad = F.pad(wav_gen_A, (0, max_len - wav_gen_A.shape[-1]))
 B_pad = F.pad(wav_gen_B, (0, max_len - wav_gen_B.shape[-1]))
-stereo = torch.cat([A_pad, B_pad], dim=0)  # [2, max_len], channels=(A,B)
-torchaudio.save(os.path.join(out_dir, "combined_generated.wav"), stereo, sr)
+# stereo = torch.cat([A_pad, B_pad], dim=0)  # [2, max_len], channels=(A,B)
+mono = A_pad + B_pad
+torchaudio.save(os.path.join(out_dir, "combined_generated.wav"), mono, sr)
 
 # # gen_wavs: Tensor[2, L] on device → move to CPU
 # gen_A = gen_wavs[0].cpu().unsqueeze(0)  # [1, L]

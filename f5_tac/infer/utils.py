@@ -24,9 +24,12 @@ from f5_tac.model.cfm import CFMWithTAC
 from f5_tac.model.backbones.dittac import DiTWithTAC
 from f5_tts.infer.utils_infer import load_vocoder
 from f5_tts.model.utils import get_tokenizer
+import logging
+from peft import LoraConfig, PeftModel, LoraModel, get_peft_model
+from f5_tac.configs.model_kwargs import lora_config
 
 
-def load_model_and_vocoder(ckpt_path, vocab_file, device):
+def load_model_and_vocoder(ckpt_path, vocab_file, device, lora=False):
     """Load model and vocoder."""
     vocab_char_map, vocab_size = get_tokenizer(vocab_file, "custom")
     # mel_spec_kwargs = dict(
@@ -48,7 +51,10 @@ def load_model_and_vocoder(ckpt_path, vocab_file, device):
         vocab_char_map=vocab_char_map
     )
     ckpt = torch.load(ckpt_path, map_location="cpu")
+    if lora:
+        model = get_peft_model(model, lora_config)
     model.load_state_dict(ckpt["model_state_dict"])
+
     model.to(device).eval()
 
     vocoder = load_vocoder().to(device)
@@ -76,7 +82,7 @@ def save_audio(wav, path, sr):
     torchaudio.save(path, wav, sr)
 
 
-def generate_sample(model, vocoder, wav_A, wav_B, text_A, text_B, device, steps=32):
+def generate_sample(model, vocoder, wav_A, wav_B, text_A, text_B, device):
     """Generate TTS samples for two speakers."""
     mel_A = model.mel_spec(wav_A)
     mel_B = model.mel_spec(wav_B)
@@ -84,6 +90,16 @@ def generate_sample(model, vocoder, wav_A, wav_B, text_A, text_B, device, steps=
 
     T_A = mel_A.size(2)
     T_B = mel_B.size(2)
+
+    # gen_text_A = text_A
+    gen_text_A = ""
+    # gen_text_B = text_B
+    gen_text_B = ""
+
+    full_texts = [
+        text_A + gen_text_A,   
+        text_B + gen_text_B,   
+    ]
 
     ratio_A = len(text_A) / max(len(text_A), 1)
     ratio_B = len(text_B) / max(len(text_B), 1)
@@ -94,15 +110,15 @@ def generate_sample(model, vocoder, wav_A, wav_B, text_A, text_B, device, steps=
     ]
 
     mels_out, _ = model.sample_joint(
-        texts=[text_A, text_B],
+        texts=full_texts,
         conds=conds,
         durations=durations,
-        steps=steps,
+        vocoder=vocoder,
+        steps=32,
         cfg_strength=1.5,
         sway_sampling_coef=-1.0,
         seed=42,
         max_duration=4096,
-        vocoder=vocoder,
         use_epss=True
     )
 
@@ -130,8 +146,8 @@ def process_row(row, model, vocoder, out_dir, device, transcript_file):
     wav_B = prep_wav(ref_wav_B, orig_sr_B, sr, device)
 
     # Handle potential missing text
-    ref_text_A = str(row.get("speaker_A_text", "")).strip()
-    ref_text_B = str(row.get("speaker_B_text", "")).strip()
+    ref_text_A = row["speaker_A_text"]
+    ref_text_B = row["speaker_B_text"]
 
     # Generate
     mels_out, T_A, T_B = generate_sample(
@@ -143,13 +159,26 @@ def process_row(row, model, vocoder, out_dir, device, transcript_file):
     # Decode generated portion only
     gen_mel_A = mels_out[0:1, T_A:, :]
     gen_mel_B = mels_out[1:2, T_B:, :]
-    gen_waveforms = vocoder.decode(
-        torch.cat([gen_mel_A, gen_mel_B], dim=0).permute(0, 2, 1)
-    ).detach().cpu()
+
+    gen_mel_A = gen_mel_A.permute(0, 2, 1)
+    wav_A = vocoder.decode(gen_mel_A).detach().cpu()   # shape [1, T_A]
+
+    gen_mel_B = gen_mel_B.permute(0, 2, 1)
+    wav_B = vocoder.decode(gen_mel_B).detach().cpu()   # shape [1, T_B]
+
+    max_len = max(wav_A.shape[-1], wav_B.shape[-1])
+    A_pad = F.pad(wav_A, (0, max_len - wav_A.shape[-1]))
+    B_pad = F.pad(wav_B, (0, max_len - wav_B.shape[-1]))
+
+    mono = A_pad + B_pad
+
+    # gen_waveforms = vocoder.decode(
+    #     torch.cat([gen_mel_A, gen_mel_B], dim=0).permute(0, 2, 1)
+    # ).detach().cpu()
 
     # --- Save combined generated audio ---
     out_wav_path = os.path.join(out_dir, f"{clip_id}_generated.wav")
-    save_audio(gen_waveforms, out_wav_path, sr)
+    save_audio(mono, out_wav_path, sr)
 
 
 

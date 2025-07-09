@@ -9,12 +9,13 @@ def main():
     parser.add_argument("--ckpt_path", type=str, required=True)
     parser.add_argument("--vocab_file", type=str, required=True)
     parser.add_argument("--output_path", type=str, required=True)
+    parser.add_argument("--lora", action="store_true")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Load model & vocoder
-    model, vocoder = load_model_and_vocoder(args.ckpt_path, args.vocab_file, device)
+    model, vocoder = load_model_and_vocoder(args.ckpt_path, args.vocab_file, device, args.lora)
 
     # Process all metadata rows
     metadata_path = os.path.join(args.data_root, "metadata.csv")

@@ -77,7 +77,7 @@ def main():
                 raise ValueError(f"Unknown config key: {key}")
     
     dataset_path = os.path.join(args.data_root, args.dataset_name) if args.data_root else args.dataset_name
-    checkpoint_path = os.path.join(args.data_root, "ckpts", args.dataset_name)
+    checkpoint_path = os.path.join(args.data_root, "ckpts", args.exp_name)
     os.makedirs(checkpoint_path, exist_ok=True)
 
     local_pretrain_path = args.pretrain
@@ -142,14 +142,36 @@ def main():
     print("  • missing   (should only be tac module keys)   :", incompatible.missing_keys[:5], "…")
     print("  • unexpected  :", incompatible.unexpected_keys[:5], "…")
 
-    # Freeze initial transformer layers
-    freeze_layers = 8  # freeze first 12 layers
-    for i, block in enumerate(transformer_backbone.transformer_blocks):
-        if i < freeze_layers:
-            for name, param in block.named_parameters():
-                if "norm" not in name and "tac" not in name:  # keep LayerNorm trainable
-                    param.requires_grad = False
-    print(f"✔️ Frozen first {freeze_layers} layers of DiTWithTAC")
+    # # Freeze initial transformer layers
+    # freeze_layers = 8  # freeze first 12 layers
+    # for i, block in enumerate(transformer_backbone.transformer_blocks):
+    #     if i < freeze_layers:
+    #         for name, param in block.named_parameters():
+    #             if "norm" not in name and "tac" not in name:  # keep LayerNorm trainable
+    #                 param.requires_grad = False
+    # print(f"✔️ Frozen first {freeze_layers} layers of DiTWithTAC")
+
+    # ----------------------------------------------------------
+    # LoRA Experiment
+    from peft import LoraConfig, PeftModel, LoraModel, get_peft_model
+    rank = 64
+    config = LoraConfig(
+        r=rank,
+        lora_alpha=128,  # (rank)**0.5,
+        # target_modules=["query", "value", "key", "mlp.0", "mlp.2"],
+        target_modules=["to_k", "to_q", "to_v", "to_out.0", "ff.ff.0.0", "ff.ff.2"],
+        lora_dropout=0.1,
+        bias="none",
+    )
+
+    model = get_peft_model(model, config)
+    model.print_trainable_parameters()
+
+    for name, param in model.named_parameters():
+        if "tac" in name:
+            param.requires_grad = True
+
+    # ----------------------------------------------------------
 
 
     # --- 6. Instantiate Trainer ---

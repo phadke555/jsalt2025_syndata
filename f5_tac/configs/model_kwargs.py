@@ -6,3 +6,14 @@ mel_spec_kwargs = dict(
 dit_cfg = dict(
     dim=1024, depth=22, heads=16, ff_mult=2, text_dim=512, conv_layers=4,
 )
+
+from peft import LoraConfig, PeftModel, LoraModel, get_peft_model
+rank = 64
+lora_config = LoraConfig(
+    r=rank,
+    lora_alpha=128,  # (rank)**0.5,
+    # target_modules=["query", "value", "key", "mlp.0", "mlp.2"],
+    target_modules=["to_k", "to_q", "to_v", "to_out.0", "ff.ff.0.0", "ff.ff.2"],
+    lora_dropout=0.1,
+    bias="none",
+)

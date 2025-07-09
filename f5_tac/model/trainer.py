@@ -386,6 +386,15 @@ class Trainer:
                     total_loss = loss_A + loss_B
                     self.accelerator.backward(total_loss)
 
+                    # ----------------------------------------------
+                    # Check LoRA works as expected
+                    # for name, param in self.model.named_parameters():
+                    #     if not param.requires_grad and param.grad is not None:
+                    #         raise RuntimeError(f"Frozen param {name} got a gradient!")
+                    #     if param.requires_grad and param.grad is None:
+                    #         raise RuntimeError(f"Trainable  param {name} saw no gradient!")
+                    # ---------------------------------------------
+
                     if self.max_grad_norm > 0 and self.accelerator.sync_gradients:
                         self.accelerator.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
 
