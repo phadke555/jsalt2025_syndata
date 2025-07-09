@@ -84,7 +84,11 @@ model = CFMWithTAC(
     mel_spec_kwargs=mel_spec_kwargs,
     vocab_char_map=vocab_char_map)
 ckpt = torch.load(args.ckpt_path, map_location="cpu")
-model.load_state_dict(ckpt["model_state_dict"])
+state = ckpt["ema_model_state_dict"]
+state = {k.replace("ema_model.", ""): v for k, v in state.items()}
+miss, unexpect = model.load_state_dict(state, strict=False)
+print(miss)
+print(unexpect)
 model.to(device).eval()
 
 # (b) load your neural vocoder here

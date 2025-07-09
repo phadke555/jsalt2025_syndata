@@ -14,6 +14,7 @@ from f5_tac.model.cfm import CFMWithTAC
 from f5_tac.model.backbones.dittac import DiTWithTAC
 from f5_tac.model.trainer import Trainer
 from f5_tac.model.dataset import load_conversation_dataset, conversation_collate_fn
+from f5_tac.configs.model_kwargs import mel_spec_kwargs, dit_cfg, lora_config
 from f5_tts.model.utils import get_tokenizer
 
 # --- Argument Parsing (adapted for finetuning TAC model) ---
@@ -89,15 +90,6 @@ def main():
 
     # --- 3. Define Model Architecture and Mel Spectrogram settings ---
     # These should match the architecture of the pretrained model you are loading.
-    mel_spec_kwargs = dict(
-        n_fft=1024, hop_length=256, win_length=1024,
-        n_mel_channels=100, target_sample_rate=24000, mel_spec_type="vocos",
-    )
-
-    
-    dit_cfg = dict(
-        dim=1024, depth=22, heads=16, ff_mult=2, text_dim=512, conv_layers=4
-    )
 
     # --- 4. Instantiate Your New Models ---
     print("Instantiating F5-TAC models...")
@@ -154,21 +146,12 @@ def main():
     # ----------------------------------------------------------
     # LoRA Experiment
     from peft import LoraConfig, PeftModel, LoraModel, get_peft_model
-    rank = 64
-    config = LoraConfig(
-        r=rank,
-        lora_alpha=128,  # (rank)**0.5,
-        # target_modules=["query", "value", "key", "mlp.0", "mlp.2"],
-        target_modules=["to_k", "to_q", "to_v", "to_out.0", "ff.ff.0.0", "ff.ff.2"],
-        lora_dropout=0.1,
-        bias="none",
-    )
 
-    model = get_peft_model(model, config)
+    model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
 
     for name, param in model.named_parameters():
-        if "tac" in name:
+        if "tac" in name or "2.dwconv" in name or "3.dwconv" in name:
             param.requires_grad = True
 
     # ----------------------------------------------------------
@@ -191,6 +174,7 @@ def main():
         wandb_project=f"finetune_f5_2speaker",
         wandb_run_name=args.exp_name,
         log_samples=args.log_samples,
+        accelerate_kwargs={"mixed_precision": "bf16"}
     )
     
     # --- 7. Load Dataset and Start Training ---

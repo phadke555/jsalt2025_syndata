@@ -91,10 +91,15 @@ def generate_sample(model, vocoder, wav_A, wav_B, text_A, text_B, device):
     T_A = mel_A.size(2)
     T_B = mel_B.size(2)
 
-    # gen_text_A = text_A
-    gen_text_A = ""
-    # gen_text_B = text_B
-    gen_text_B = ""
+    if not isinstance(text_A, str):
+        text_A = ""
+    if not isinstance(text_B, str):
+        text_B = ""
+
+    gen_text_A = text_A
+    # gen_text_A = ""
+    gen_text_B = text_B
+    # gen_text_B = ""
 
     full_texts = [
         text_A + gen_text_A,   
@@ -105,8 +110,8 @@ def generate_sample(model, vocoder, wav_A, wav_B, text_A, text_B, device):
     ratio_B = len(text_B) / max(len(text_B), 1)
 
     durations = [
-        int(T_A * (1 + ratio_A)),
-        int(T_B * (1 + ratio_B))
+        int(T_A * (1.1 + ratio_A)),
+        int(T_B * (1.1 + ratio_B))
     ]
 
     mels_out, _ = model.sample_joint(
@@ -161,10 +166,17 @@ def process_row(row, model, vocoder, out_dir, device, transcript_file):
     gen_mel_B = mels_out[1:2, T_B:, :]
 
     gen_mel_A = gen_mel_A.permute(0, 2, 1)
-    wav_A = vocoder.decode(gen_mel_A).detach().cpu()   # shape [1, T_A]
+    if gen_mel_A.numel() == 0:
+        # produce an “empty” waveform: shape [1, 0]
+        wav_A = torch.zeros(1, 0, device="cpu")
+    else:
+        wav_A = vocoder.decode(gen_mel_A).detach().cpu()
 
     gen_mel_B = gen_mel_B.permute(0, 2, 1)
-    wav_B = vocoder.decode(gen_mel_B).detach().cpu()   # shape [1, T_B]
+    if gen_mel_B.numel() == 0:
+        wav_B = torch.zeros(1, 0, device="cpu")
+    else:
+        wav_B = vocoder.decode(gen_mel_B).detach().cpu()
 
     max_len = max(wav_A.shape[-1], wav_B.shape[-1])
     A_pad = F.pad(wav_A, (0, max_len - wav_A.shape[-1]))

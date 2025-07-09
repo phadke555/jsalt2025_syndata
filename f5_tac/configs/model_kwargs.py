@@ -13,7 +13,7 @@ lora_config = LoraConfig(
     r=rank,
     lora_alpha=128,  # (rank)**0.5,
     # target_modules=["query", "value", "key", "mlp.0", "mlp.2"],
-    target_modules=["to_k", "to_q", "to_v", "to_out.0", "ff.ff.0.0", "ff.ff.2"],
+    target_modules=["pwconv1", "pwconv2", "to_k", "to_q", "to_v", "to_out.0", "ff.ff.0.0", "ff.ff.2"],
     lora_dropout=0.1,
     bias="none",
 )

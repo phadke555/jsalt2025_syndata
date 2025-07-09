@@ -143,8 +143,9 @@ def main():
         durations[str(out_A)] = cut_A.duration
         durations[str(out_B)] = cut_B.duration
 
-        text_A = " ".join(s.text for s in cut_A.supervisions)
-        text_B = " ".join(s.text for s in cut_B.supervisions)
+        # add a trailing “-” to each supervision utterance
+        text_A = " ".join(f"{s.text} -" for s in cut_A.supervisions)
+        text_B = " ".join(f"{s.text} -" for s in cut_B.supervisions)
 
         rows.append({
             "recording_id":   conv_id,
