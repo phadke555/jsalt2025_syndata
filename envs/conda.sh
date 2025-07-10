@@ -4,14 +4,14 @@ if [ -z "$1" ]; then
   exit 1
 fi
 
-ENV_PATH="$1"
+ENV_PATH="/home/rphadke1/jsalt2025_syndata/envs/conda_env"
 
 # Load Anaconda module (adjust the module name if necessary)
-module add anaconda
+source ~/.bashrc
 
 # Create a Conda environment with Python 3.10 at the specified location
 echo "→ Creating conda env at ${ENV_PATH} with Python 3.10…"
-conda create --prefix "${ENV_PATH}" python=3.10.15 -y
+conda create --prefix "${ENV_PATH}" python=3.10.15 pip -y
 
 # Activate the Conda environment
 echo "→ Activating ${ENV_PATH}…"
@@ -20,7 +20,8 @@ conda activate "${ENV_PATH}"
 echo "→ Installing FFmpeg (for audio processing)…"
 conda install -y -c conda-forge ffmpeg
 
-pip install datasets[audio] soundfile pyyaml
+pip install datasets[audio] soundfile pyyaml lhotse peft
+pip install 'jiwer<4.0'
 
 echo "→ Cloning F5-TTS repository…"
 git clone https://github.com/SWivid/F5-TTS.git

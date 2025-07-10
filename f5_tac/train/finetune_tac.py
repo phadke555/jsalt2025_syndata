@@ -77,7 +77,7 @@ def main():
             else:
                 raise ValueError(f"Unknown config key: {key}")
     
-    dataset_path = os.path.join(args.data_root, args.dataset_name) if args.data_root else args.dataset_name
+    dataset_path = os.path.join(args.data_root, "data", args.dataset_name) if args.data_root else args.dataset_name
     checkpoint_path = os.path.join(args.data_root, "ckpts", args.exp_name)
     os.makedirs(checkpoint_path, exist_ok=True)
 
