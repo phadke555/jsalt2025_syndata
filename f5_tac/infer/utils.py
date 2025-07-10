@@ -26,7 +26,7 @@ from f5_tts.infer.utils_infer import load_vocoder
 from f5_tts.model.utils import get_tokenizer
 import logging
 from peft import LoraConfig, PeftModel, LoraModel, get_peft_model
-from f5_tac.configs.model_kwargs import lora_config
+from f5_tac.configs.model_kwargs import lora_configv1, lora_configv2
 
 
 def load_model_and_vocoder(ckpt_path, vocab_file, device, lora=False):
@@ -52,7 +52,7 @@ def load_model_and_vocoder(ckpt_path, vocab_file, device, lora=False):
     )
     ckpt = torch.load(ckpt_path, map_location="cpu")
     if lora:
-        model = get_peft_model(model, lora_config)
+        model = get_peft_model(model, lora_configv1)
     model.load_state_dict(ckpt["model_state_dict"])
 
     model.to(device).eval()

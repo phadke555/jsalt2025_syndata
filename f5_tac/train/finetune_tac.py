@@ -14,7 +14,7 @@ from f5_tac.model.cfm import CFMWithTAC
 from f5_tac.model.backbones.dittac import DiTWithTAC
 from f5_tac.model.trainer import Trainer
 from f5_tac.model.dataset import load_conversation_dataset, conversation_collate_fn
-from f5_tac.configs.model_kwargs import mel_spec_kwargs, dit_cfg, lora_config
+from f5_tac.configs.model_kwargs import mel_spec_kwargs, dit_cfg, lora_configv2
 from f5_tts.model.utils import get_tokenizer
 
 # --- Argument Parsing (adapted for finetuning TAC model) ---
@@ -147,7 +147,7 @@ def main():
     # LoRA Experiment
     from peft import LoraConfig, PeftModel, LoraModel, get_peft_model
 
-    model = get_peft_model(model, lora_config)
+    model = get_peft_model(model, lora_configv2)
     model.print_trainable_parameters()
 
     for name, param in model.named_parameters():
