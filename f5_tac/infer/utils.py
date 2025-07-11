@@ -52,7 +52,7 @@ def load_model_and_vocoder(ckpt_path, vocab_file, device, lora=False):
     )
     ckpt = torch.load(ckpt_path, map_location="cpu")
     if lora:
-        model = get_peft_model(model, lora_configv1)
+        model = get_peft_model(model, lora_configv2)
     model.load_state_dict(ckpt["model_state_dict"])
 
     model.to(device).eval()

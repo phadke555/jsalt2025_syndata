@@ -11,6 +11,7 @@ import yaml
 
 # --- MODIFICATION: Import your new modules ---
 from f5_tac.model.cfm import CFMWithTAC
+from f5_tac.model.reccfm import CFMWithTACRecon
 from f5_tac.model.backbones.dittac import DiTWithTAC
 from f5_tac.model.trainer import Trainer
 from f5_tac.model.dataset import load_conversation_dataset, conversation_collate_fn
@@ -100,7 +101,7 @@ def main():
         mel_dim=mel_spec_kwargs["n_mel_channels"]
     )
     
-    model = CFMWithTAC(
+    model = CFMWithTACRecon(
         transformer=transformer_backbone,
         mel_spec_kwargs=mel_spec_kwargs,
         vocab_char_map=vocab_char_map,
@@ -151,7 +152,7 @@ def main():
     model.print_trainable_parameters()
 
     for name, param in model.named_parameters():
-        if "tac" in name or "2.dwconv" in name or "3.dwconv" in name:
+        if "tac" in name:
             param.requires_grad = True
 
     # ----------------------------------------------------------
@@ -171,6 +172,7 @@ def main():
         grad_accumulation_steps=int(args.grad_accumulation_steps),
         max_grad_norm=1.0, # max_grad_norm is not in args
         logger=args.logger,
+        recon_loss = True,
         wandb_project=f"finetune_f5_2speaker",
         wandb_run_name=args.exp_name,
         log_samples=args.log_samples,
@@ -189,7 +191,7 @@ def main():
     trainer.train(
         train_dataset=train_dataset,
         collate_fn=conversation_collate_fn, # Pass your custom collate fn
-        num_workers=8, # Adjust as needed
+        num_workers=12, # Adjust as needed
         resumable_with_seed=666,
     )
 
