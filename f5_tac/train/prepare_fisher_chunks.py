@@ -24,7 +24,7 @@ from datasets.arrow_writer import ArrowWriter
 import torch
 import torchaudio
 
-from f5_tac.model.utils import get_sa, align_text_to_frames_from_cut
+from f5_tac.model.utils import get_sa, align_text_once_to_frames_from_cut
 from f5_tac.configs.model_kwargs import mel_spec_kwargs
 
 
@@ -146,11 +146,11 @@ def main():
         durations[str(out_A)] = cut_A.duration
         durations[str(out_B)] = cut_B.duration
 
-        seq_A = align_text_to_frames_from_cut(
+        seq_A = align_text_once_to_frames_from_cut(
             cut_A,
             hop_length=mel_spec_kwargs["hop_length"]
         )
-        seq_B = align_text_to_frames_from_cut(
+        seq_B = align_text_once_to_frames_from_cut(
             cut_B,
             hop_length=mel_spec_kwargs["hop_length"]
         )

@@ -98,3 +98,53 @@ def align_text_to_frames_from_cut(
             char_seq[e_frame] = boundary_token
 
     return char_seq
+
+
+
+def align_text_once_to_frames_from_cut(
+    cut: Cut,
+    hop_length: int,
+    pad_token: str = " ",
+    boundary_token: str = "-",
+) -> list[str]:
+    """
+    Given a Lhotse Cut, produce a list of length n_frames,
+    where each character in each supervision is placed on exactly
+    one frame, in order, and any leftover frames in that utterance
+    span are filled with pad_token. Optionally mark the boundary
+    frame with boundary_token.
+    """
+    sr = cut.sampling_rate
+    segment = cut.duration   # seconds
+    n_frames = int(np.ceil((segment * sr) / hop_length))
+    seq = [pad_token] * n_frames
+
+    frame_shift = hop_length / sr  # seconds per frame
+
+    for sup in cut.supervisions:
+        # Clip utterance to [0, segment]
+        start = max(0.0, sup.start)
+        stop  = min(segment, sup.start + sup.duration)
+        if stop <= start:
+            continue
+
+        s_f = int(start / frame_shift)
+        e_f = int(stop  / frame_shift)
+        span = e_f - s_f
+        if span <= 0:
+            continue
+
+        chars = list(sup.text)
+        # Place each character on its own frame, up to the span
+        for i, ch in enumerate(chars):
+            if i >= span:
+                break
+            seq[s_f + i] = ch
+
+        # Any remaining frames in [s_f+len(chars) : e_f) stay as pad_token
+
+        # Optionally mark the exact boundary frame
+        if boundary_token is not None and e_f < n_frames:
+            seq[e_f] = boundary_token
+
+    return seq
