@@ -26,3 +26,5 @@ batch_infer.slurm
 eval_metrics.slurm
 diarize.slurm
 unittest_ft.slurm
+test_vadtext.ipynb
+unittest_sa.slurm
