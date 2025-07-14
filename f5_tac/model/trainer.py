@@ -265,7 +265,7 @@ class Trainer:
         gc.collect()
         return update
 
-    def train(self, train_dataset: Dataset, collate_fn, num_workers=2, resumable_with_seed: int = None):
+    def train(self, train_dataset: Dataset, collate_fn, num_workers=2, prefetch_factor=4, resumable_with_seed: int = None):
         if self.log_samples:
             from f5_tts.infer.utils_infer import cfg_strength, load_vocoder, nfe_step, sway_sampling_coef
 
@@ -307,6 +307,7 @@ class Trainer:
                 train_dataset,
                 collate_fn=collate_fn,
                 num_workers=num_workers,
+                prefetch_factor=prefetch_factor,
                 pin_memory=True,
                 persistent_workers=True,
                 batch_sampler=batch_sampler,
@@ -382,7 +383,7 @@ class Trainer:
 
                     # --- FIXED: Call the new model and unpack all return values ---
                     if self.recon_loss:
-                        mix_loss, cond_A, pred_A, cond_B, pred_B = self.model(
+                        loss_A, loss_B, mix_loss, cond_A, pred_A, cond_B, pred_B = self.model(
                             mel_A=mel_A,
                             text_A=text_A,
                             mel_lengths_A=mel_lengths_A,
@@ -391,7 +392,7 @@ class Trainer:
                             mel_lengths_B=mel_lengths_B,
                             noise_scheduler=self.noise_scheduler,
                         )
-                        total_loss = mix_loss
+                        total_loss = loss_A + loss_B + self.mix_loss_lambda * mix_loss
                         self.accelerator.backward(total_loss)
                     else:
                         loss_A, loss_B, cond_A, pred_A, cond_B, pred_B = self.model(
@@ -435,8 +436,8 @@ class Trainer:
                         self.accelerator.log(
                             {
                                 "loss": total_loss.item(),
-                                # "loss_A": loss_A.item(),
-                                # "loss_B": loss_B.item(),
+                                "loss_A": loss_A.item(),
+                                "loss_B": loss_B.item(),
                                 "reconstruction_loss": mix_loss.item(),
                                 "lr": self.scheduler.get_last_lr()[0]
                             }, 

@@ -1,3 +1,4 @@
+# batch_infer.py
 import argparse
 import torch
 from f5_tac.infer.utils import load_model_and_vocoder, process_all

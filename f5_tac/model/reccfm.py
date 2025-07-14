@@ -405,14 +405,14 @@ class CFMWithTACRecon(nn.Module):
         pred_A, pred_B = torch.chunk(pred_stacked, 2, dim=0)
         pred_mix = pred_A + pred_B
 
-        # loss_A = F.mse_loss(pred_A, flow_A, reduction="none")
-        # loss_A = loss_A[rand_span_mask_A].mean()
+        loss_A = F.mse_loss(pred_A, flow_A, reduction="none")
+        loss_A = loss_A[rand_span_mask_A].mean()
 
-        # loss_B = F.mse_loss(pred_B, flow_B, reduction="none")
-        # loss_B = loss_B[rand_span_mask_B].mean()
+        loss_B = F.mse_loss(pred_B, flow_B, reduction="none")
+        loss_B = loss_B[rand_span_mask_B].mean()
 
         mask_mix = rand_span_mask_A | rand_span_mask_B
         mix_loss = F.mse_loss(pred_mix, flow_mix, reduction = "none")
         mix_loss = mix_loss[mask_mix].mean()
 
-        return mix_loss, cond_A, pred_A, cond_B, pred_B
+        return loss_A, loss_B, mix_loss, cond_A, pred_A, cond_B, pred_B

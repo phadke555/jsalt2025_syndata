@@ -15,7 +15,7 @@ from f5_tac.model.reccfm import CFMWithTACRecon
 from f5_tac.model.backbones.dittac import DiTWithTAC
 from f5_tac.model.trainer import Trainer
 from f5_tac.model.dataset import load_conversation_dataset, conversation_collate_fn
-from f5_tac.configs.model_kwargs import mel_spec_kwargs, dit_cfg, lora_configv2
+from f5_tac.configs.model_kwargs import mel_spec_kwargs, dit_cfg, lora_configv3
 from f5_tts.model.utils import get_tokenizer
 
 # --- Argument Parsing (adapted for finetuning TAC model) ---
@@ -148,11 +148,11 @@ def main():
     # LoRA Experiment
     from peft import LoraConfig, PeftModel, LoraModel, get_peft_model
 
-    model = get_peft_model(model, lora_configv2)
+    model = get_peft_model(model, lora_configv3)
     model.print_trainable_parameters()
 
     for name, param in model.named_parameters():
-        if "tac" in name:
+        if "tac" in name or "text_embed.text_embed" in name or "3.dwconv" in name:
             param.requires_grad = True
 
     # ----------------------------------------------------------
@@ -171,11 +171,13 @@ def main():
         max_samples=int(args.max_samples),
         grad_accumulation_steps=int(args.grad_accumulation_steps),
         max_grad_norm=1.0, # max_grad_norm is not in args
+        mix_loss_lambda=1.0,
         logger=args.logger,
         recon_loss = True,
         wandb_project=f"finetune_f5_2speaker",
         wandb_run_name=args.exp_name,
         log_samples=args.log_samples,
+        bnb_optimizer=True,
         accelerate_kwargs={"mixed_precision": "bf16"}
     )
     
@@ -191,7 +193,7 @@ def main():
     trainer.train(
         train_dataset=train_dataset,
         collate_fn=conversation_collate_fn, # Pass your custom collate fn
-        num_workers=12, # Adjust as needed
+        num_workers=18, # Adjust as needed
         resumable_with_seed=666,
     )
 

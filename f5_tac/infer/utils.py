@@ -21,6 +21,7 @@ import torch.nn.functional as F
 import pandas as pd
 
 from f5_tac.model.cfm import CFMWithTAC
+from f5_tac.model.reccfm import CFMWithTACRecon
 from f5_tac.model.backbones.dittac import DiTWithTAC
 from f5_tts.infer.utils_infer import load_vocoder
 from f5_tts.model.utils import get_tokenizer
@@ -45,7 +46,7 @@ def load_model_and_vocoder(ckpt_path, vocab_file, device, lora=False):
         text_num_embeds=vocab_size,
         mel_dim=mel_spec_kwargs["n_mel_channels"]
     )
-    model = CFMWithTAC(
+    model = CFMWithTACRecon(
         transformer=transformer,
         mel_spec_kwargs=mel_spec_kwargs,
         vocab_char_map=vocab_char_map
@@ -138,7 +139,6 @@ def process_row(row, model, vocoder, out_dir, device, transcript_file):
     # --- Extract identifiers from wav path ---
     # e.g. /path/to/fe_03_00001_0000_A.wav → fe_03_00001_0000
     base_name_A = os.path.basename(row["speaker_A_wav"])
-    base_name_B = os.path.basename(row["speaker_B_wav"])
 
     # Take common prefix (before _A.wav or _B.wav)
     clip_id = base_name_A.replace("_A.wav", "")
