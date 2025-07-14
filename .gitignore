@@ -25,3 +25,4 @@ f5_tac/train/load_checkpoint.py
 batch_infer.slurm
 eval_metrics.slurm
 diarize.slurm
+unittest_ft.slurm
