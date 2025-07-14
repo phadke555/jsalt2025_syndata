@@ -130,6 +130,18 @@ def main():
     # 3) Strip an ‘ema_model.’ prefix if it sneaked in
     state = {k.replace("ema_model.", ""): v for k, v in state.items()}
 
+    old_embed_weight = state["transformer.text_embed.text_embed.weight"]
+    random_spkchg_init = torch.randn(1, old_embed_weight.shape[1]) * 0.01
+    print("\n == Spk Chg Token Init ==")
+    print(random_spkchg_init)
+    
+    with torch.no_grad():
+        new_embed_weight = torch.cat([
+            old_embed_weight,                               # copy existing rows
+            random_spkchg_init  # random init new row
+        ], dim=0)
+    
+    state["transformer.text_embed.text_embed.weight"] = new_embed_weight
 
     # 5) Finally load with strict=False to pick up whatever lines up
     incompatible = model.load_state_dict(state, strict=False)

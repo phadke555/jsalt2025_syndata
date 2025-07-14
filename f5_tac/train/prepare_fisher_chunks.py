@@ -24,6 +24,9 @@ from datasets.arrow_writer import ArrowWriter
 import torch
 import torchaudio
 
+from f5_tac.model.utils import get_sa, align_text_once_to_frames_from_cut
+from f5_tac.configs.model_kwargs import mel_spec_kwargs
+
 
 def parse_args():
     p = argparse.ArgumentParser(
@@ -143,9 +146,24 @@ def main():
         durations[str(out_A)] = cut_A.duration
         durations[str(out_B)] = cut_B.duration
 
-        # add a trailing “-” to each supervision utterance
-        text_A = " ".join(f"{s.text} -" for s in cut_A.supervisions)
-        text_B = " ".join(f"{s.text} -" for s in cut_B.supervisions)
+        seq_A = align_text_once_to_frames_from_cut(
+            cut_A,
+            hop_length=mel_spec_kwargs["hop_length"],
+            pad_token="<sil>"
+        )
+        seq_B = align_text_once_to_frames_from_cut(
+            cut_B,
+            hop_length=mel_spec_kwargs["hop_length"],
+            pad_token="<sil>"
+        )
+
+        # # add a trailing “-” to each supervision utterance
+        # text_A = " ".join(f"{s.text} -" for s in cut_A.supervisions)
+        # text_B = " ".join(f"{s.text} -" for s in cut_B.supervisions)
+
+        text_A = "".join(seq_A)
+        text_B = "".join(seq_B)
+
 
         rows.append({
             "recording_id":   conv_id,
