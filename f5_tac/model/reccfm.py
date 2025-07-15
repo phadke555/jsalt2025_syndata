@@ -16,10 +16,10 @@ from f5_tts.model.utils import (
     exists,
     get_epss_timesteps,
     lens_to_mask,
-    list_str_to_idx,
     list_str_to_tensor,
     mask_from_frac_lengths,
 )
+from f5_tac.model.utils import list_str_to_idx
 
 class CFMWithTACRecon(nn.Module):
     """
