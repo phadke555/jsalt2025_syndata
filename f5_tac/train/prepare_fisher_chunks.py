@@ -148,11 +148,13 @@ def main():
 
         seq_A = align_text_once_to_frames_from_cut(
             cut_A,
-            hop_length=mel_spec_kwargs["hop_length"]
+            hop_length=mel_spec_kwargs["hop_length"],
+            pad_token="<sil>"
         )
         seq_B = align_text_once_to_frames_from_cut(
             cut_B,
-            hop_length=mel_spec_kwargs["hop_length"]
+            hop_length=mel_spec_kwargs["hop_length"],
+            pad_token="<sil>"
         )
 
         # # add a trailing “-” to each supervision utterance
