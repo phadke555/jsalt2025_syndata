@@ -1,5 +1,5 @@
 # ----------------------- F5-TAC Finetune Config ----------------------- #
-exp_name: fisher_chunks_1K_LoRAv4.2
+exp_name: fisher_chunks_1K_LoRAv4.3
 
 dataset_name: fisher_chunks_v3
 data_root: /work/users/r/p/rphadke/JSALT/

@@ -167,7 +167,7 @@ def list_str_to_idx(
                 idxs.append(vocab_char_map.get("<utt>", 0))
                 i += 5  # Skip over "<utt>"
             elif t[i : i + 5] == "<sil>":
-                idxs.append(vocab_char_map.get("<sil>", 0))
+                idxs.append(-1)
                 i += 5  # Skip over "<sil>"
             else:
                 idxs.append(vocab_char_map.get(t[i], 0))
