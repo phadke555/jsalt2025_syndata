@@ -49,7 +49,8 @@ if __name__ == "__main__":
     sd_before = load_file(before_ckpt, device="cpu")
     print("Prior Checkpoint")
     print(set(sd_before.keys()))
-    sd_after  = torch.load(args.checkpoint,  map_location="cpu")["model_state_dict"]
+    sd_after  = torch.load(args.checkpoint,  map_location="cpu")["ema_model_state_dict"]
+    sd_after = {k.replace("ema_model.", ""): v for k, v in sd_after.items()}
     print("New Checkpoint")
     print(set(sd_after.keys()))
 
@@ -58,8 +59,13 @@ if __name__ == "__main__":
     Wb = sd_before["ema_model.transformer.text_embed.text_embed.weight"]
     Wa = sd_after["base_model.model.transformer.text_embed.text_embed.weight"]
 
+    ib = sd_before["ema_model.transformer.input_embed.proj.weight"]
+    ia = sd_after["base_model.model.transformer.input_embed.proj.weight"]
+
     # 3) Compute absolute difference
     delta = (Wa - Wb).abs()
+
+    idelta = (ib - ia).abs()
 
     # 4) Metrics
     speaker_chg_token_idx = list_str_to_idx([spk_chg_token], vocab_char_map=vocab_char_map)
@@ -67,9 +73,12 @@ if __name__ == "__main__":
     max_overall   = delta.max().item()
     max_speaker   = delta[speaker_chg_token_idx].max().item()
 
-    print("\n== Embedding Drift ==")
-    print(f"→ Max |Δ| overall:                  {max_overall:.6f}")
+    print("\n== Text Embedding Drift ==")
+    print(f"→ Max text embedding matrix change |Δ| overall:                  {max_overall:.6f}")
     print(f"→ Max |Δ| on token {speaker_chg_token_idx}: {max_speaker:.6f}")
+
+    print("\n== Input Embedding Drift ==")
+    print(f"→ Max input embedding weight change |Δ| overall:                  {idelta.max().item():.6f}")
 
     print("== LoRA Weight Scales ==")
     inspect_lora_weights(sd_after)

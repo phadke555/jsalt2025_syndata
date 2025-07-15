@@ -1,5 +1,5 @@
 # ----------------------- F5-TAC Finetune Config ----------------------- #
-exp_name: fisher_chunks_1K_LoRAv3.2
+exp_name: fisher_chunks_1K_LoRAv3.3
 
 dataset_name: fisher_chunks_0.1K_v2
 data_root: /work/users/r/p/rphadke/JSALT/
@@ -11,7 +11,7 @@ pretrain: /work/users/r/p/rphadke/JSALT/ckpts/pretrained_model_1250000.safetenso
 finetune: true
 
 learning_rate: 1e-8
-epochs: 10
+epochs: 20
 
 batch_size_per_gpu: 3200
 batch_size_type: frame
