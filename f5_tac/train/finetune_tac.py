@@ -131,6 +131,7 @@ def main():
     random_spkchg_init = torch.randn(1, old_embed_weight.shape[1]) * 0.01
     print("\n == Spk Chg Token Init ==")
     print(random_spkchg_init)
+    
     with torch.no_grad():
         new_embed_weight = torch.cat([
             old_embed_weight,                               # copy existing rows
