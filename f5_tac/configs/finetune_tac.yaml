@@ -1,7 +1,8 @@
 # ----------------------- F5-TAC Finetune Config ----------------------- #
-exp_name: fisher_chunks_1K_LoRAv3.2
+exp_name: TESTExperiment
 
 dataset_name: fisher_chunks_0.1K_v2
+val_dataset_name: fisher_chunks_0.1K_v2.1VAL
 data_root: /work/users/r/p/rphadke/JSALT/
 
 tokenizer: custom
@@ -19,9 +20,10 @@ max_samples: 64
 grad_accumulation_steps: 2
 max_grad_norm: 1.0
 
-save_per_updates: 15000
+save_per_updates: 1000
 keep_last_n_checkpoints: 0
-last_per_updates: 10000
+last_per_updates: 500
+val_per_updates: 50
 
 bnb_optimizer: false
 log_samples: false

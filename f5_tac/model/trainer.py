@@ -49,6 +49,7 @@ class Trainer:
         wandb_resume_id: str = None,
         log_samples: bool = False,
         last_per_updates=None,
+        val_per_updates=None,
         accelerate_kwargs: dict = dict(),
         ema_kwargs: dict = dict(),
         bnb_optimizer: bool = False,
@@ -118,6 +119,7 @@ class Trainer:
         self.save_per_updates = save_per_updates
         self.keep_last_n_checkpoints = keep_last_n_checkpoints
         self.last_per_updates = default(last_per_updates, save_per_updates)
+        self.val_per_updates = default(val_per_updates, save_per_updates)
         self.checkpoint_path = default(checkpoint_path, "ckpts/test_f5-tts")
 
         self.batch_size_per_gpu = batch_size_per_gpu
@@ -265,7 +267,7 @@ class Trainer:
         gc.collect()
         return update
 
-    def train(self, train_dataset: Dataset, collate_fn, num_workers=2, prefetch_factor=4, resumable_with_seed: int = None):
+    def train(self, train_dataset: Dataset, val_dataset: Dataset, collate_fn, num_workers=2, prefetch_factor=4, resumable_with_seed: int = None):
         if self.log_samples:
             from f5_tts.infer.utils_infer import cfg_strength, load_vocoder, nfe_step, sway_sampling_coef
 
@@ -293,6 +295,15 @@ class Trainer:
                 shuffle=True,
                 generator=generator,
             )
+            train_dataloader = DataLoader(
+                val_dataset,
+                collate_fn=collate_fn,
+                num_workers=num_workers,
+                pin_memory=True,
+                persistent_workers=True,
+                batch_size=self.batch_size_per_gpu,
+                shuffle=False
+            )
         elif self.batch_size_type == "frame":
             self.accelerator.even_batches = False
             sampler = SequentialSampler(train_dataset)
@@ -313,6 +324,16 @@ class Trainer:
                 batch_sampler=batch_sampler,
             )
             print("Train dataloader length:", len(train_dataloader))
+            val_dataloader = DataLoader(
+                val_dataset,
+                collate_fn=collate_fn,
+                num_workers=num_workers,
+                prefetch_factor=prefetch_factor,
+                pin_memory=True,
+                shuffle=False,
+                drop_last=False
+            )
+            print("Val dataloader length:", len(val_dataloader))
         else:
             raise ValueError(f"batch_size_type must be either 'sample' or 'frame', but received {self.batch_size_type}")
 
@@ -329,8 +350,8 @@ class Trainer:
         self.scheduler = SequentialLR(
             self.optimizer, schedulers=[warmup_scheduler, decay_scheduler], milestones=[warmup_updates]
         )
-        train_dataloader, self.scheduler = self.accelerator.prepare(
-            train_dataloader, self.scheduler
+        train_dataloader, self.scheduler, val_dataloader = self.accelerator.prepare(
+            train_dataloader, self.scheduler, val_dataloader
         )  # actual multi_gpu updates = single_gpu updates / gpu nums
         start_update = self.load_checkpoint()
         global_update = start_update
@@ -456,6 +477,49 @@ class Trainer:
                     if self.logger == "tensorboard":
                         self.writer.add_scalar("loss", total_loss.item(), global_update)
                         self.writer.add_scalar("lr", self.scheduler.get_last_lr()[0], global_update)
+
+                if global_update % self.val_per_updates == 0 and self.accelerator.is_local_main_process:
+                    self.model.eval()
+                    total_val_loss = 0.0
+                    n_val_batches = 0
+                    with torch.no_grad():
+                        for val_batch in val_dataloader:
+                            mel_A = val_batch["mel_A"].permute(0, 2, 1)
+                            text_A = val_batch["text_A"]
+                            mel_lengths_A = val_batch["mel_lengths_A"]
+                            mel_B = val_batch["mel_B"].permute(0, 2, 1)
+                            text_B = val_batch["text_B"]
+                            mel_lengths_B = val_batch["mel_lengths_B"]
+
+                            if self.recon_loss:
+                                loss_A, loss_B, mix_loss, *_ = self.model(
+                                    mel_A=mel_A,
+                                    text_A=text_A,
+                                    mel_lengths_A=mel_lengths_A,
+                                    mel_B=mel_B,
+                                    text_B=text_B,
+                                    mel_lengths_B=mel_lengths_B,
+                                    noise_scheduler=self.noise_scheduler,
+                                )
+                                batch_loss = loss_A + loss_B + self.mix_loss_lambda * mix_loss
+                            else:
+                                loss_A, loss_B, *_ = self.model(
+                                    mel_A=mel_A,
+                                    text_A=text_A,
+                                    mel_lengths_A=mel_lengths_A,
+                                    mel_B=mel_B,
+                                    text_B=text_B,
+                                    mel_lengths_B=mel_lengths_B,
+                                    noise_scheduler=self.noise_scheduler,
+                                )
+                                batch_loss = loss_A + loss_B
+                            total_val_loss += batch_loss.item()
+                            n_val_batches += 1
+                    avg_val_loss = total_val_loss / max(1, n_val_batches)
+                    self.accelerator.log({"val_loss": avg_val_loss}, step=global_update)
+                    if self.logger == "tensorboard":
+                        self.writer.add_scalar("val_loss", avg_val_loss, global_update)
+                    self.model.train()
 
                 if global_update % self.last_per_updates == 0 and self.accelerator.sync_gradients:
                     self.save_checkpoint(global_update, last=True)
