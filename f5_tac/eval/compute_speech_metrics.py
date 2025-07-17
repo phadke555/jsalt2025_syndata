@@ -194,16 +194,16 @@ if __name__ == "__main__":
     # Paths
     base_output = args.data_root
     generated_json_dir = os.path.join(base_output, "generated")
-    real_json_dir = os.path.join(base_output, "real")
+    # real_json_dir = os.path.join(base_output, "real")
 
     # Process both sets
-    dur_gen, occ_gen, mean_gen = process_directory(generated_json_dir, "Generated")
-    dur_real, occ_real, mean_real = process_directory(real_json_dir, "Real")
+    dur_gen, occ_gen, mean_gen = process_directory(generated_json_dir, "Ablation-Layered")
+    # dur_real, occ_real, mean_real = process_directory(real_json_dir, "Real")
 
     # Combine
-    dur_df = pd.concat([dur_gen, dur_real], ignore_index=True)
-    occ_df = pd.concat([occ_gen, occ_real], ignore_index=True)
-    mean_df = pd.concat([mean_gen, mean_real], ignore_index=True)
+    dur_df = dur_gen
+    occ_df = occ_gen
+    mean_df = mean_gen
 
     # Save combined results
     combined_output_dir = os.path.join(base_output, "metrics")

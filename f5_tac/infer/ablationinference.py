@@ -1,6 +1,6 @@
 # your model import
 from f5_tac.model.cfm import CFMWithTAC
-from f5_tac.model.backbones.dittac import DiTWithTAC
+from f5_tac.model.backbones.dittac import LayeredDiT
 
 from f5_tts.infer.utils_infer import load_vocoder
 from f5_tts.model.utils import get_tokenizer
@@ -23,7 +23,7 @@ mel_spec_kwargs = dict(
 dit_cfg = dict(
         dim=1024, depth=22, heads=16, ff_mult=2, text_dim=512, conv_layers=4,
     )
-transformer = DiTWithTAC(
+transformer = LayeredDiT(
     **dit_cfg,
     num_speakers=2, # Critical for TAC blocks
     text_num_embeds=vocab_size,

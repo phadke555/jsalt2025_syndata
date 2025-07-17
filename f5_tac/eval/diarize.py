@@ -123,7 +123,7 @@ def main():
     parser = argparse.ArgumentParser(description="Batch diarization of WAV files.")
     parser.add_argument("--output_path", type=str, required=True)
     parser.add_argument("--generated_audio_path", type=str, required=True)
-    parser.add_argument("--real_audio_path", type=str, required=True)
+    # parser.add_argument("--real_audio_path", type=str, required=True)
     parser.add_argument("--auth_token", type=str, required=True, help="HuggingFace token for pyannote model")
     args = parser.parse_args()
 
@@ -138,7 +138,7 @@ def main():
 
     # Process generated and real audio
     process_folder(pipeline, args.generated_audio_path, generated_output_dir)
-    process_folder(pipeline, args.real_audio_path, real_output_dir)
+    # process_folder(pipeline, args.real_audio_path, real_output_dir)
 
 
 if __name__ == "__main__":

@@ -22,7 +22,7 @@ import pandas as pd
 
 from f5_tac.model.cfm import CFMWithTAC
 from f5_tac.model.reccfm import CFMWithTACRecon
-from f5_tac.model.backbones.dittac import DiTWithTAC
+from f5_tac.model.backbones.dittac import LayeredDiT
 from f5_tts.infer.utils_infer import load_vocoder
 from f5_tts.model.utils import get_tokenizer
 import logging
@@ -40,7 +40,7 @@ def load_model_and_vocoder(ckpt_path, vocab_file, device, lora=False):
     # dit_cfg = dict(
     #     dim=1024, depth=22, heads=16, ff_mult=2, text_dim=512, conv_layers=4,
     # )
-    transformer = DiTWithTAC(
+    transformer = LayeredDiT(
         **dit_cfg,
         num_speakers=2,
         text_num_embeds=vocab_size,
@@ -51,10 +51,23 @@ def load_model_and_vocoder(ckpt_path, vocab_file, device, lora=False):
         mel_spec_kwargs=mel_spec_kwargs,
         vocab_char_map=vocab_char_map
     )
-    ckpt = torch.load(ckpt_path, map_location="cpu")
+    if ckpt_path.endswith(".safetensors"):
+        from safetensors.torch import load_file
+        ckpt = load_file(ckpt_path, device="cpu")
+    else:
+        ckpt = torch.load(ckpt_path, map_location="cpu")
     if lora:
         model = get_peft_model(model, lora_configv2)
-    model.load_state_dict(ckpt["model_state_dict"])
+    
+    print(ckpt.keys())
+
+    ckpt = (
+        ckpt.get("model_state_dict", 
+        ckpt.get("ema_model_state_dict", ckpt))
+    )
+    ckpt = {k.replace("ema_model.", ""): v for k, v in ckpt.items()}
+    
+    model.load_state_dict(ckpt, strict=False)
 
     model.to(device).eval()
 
