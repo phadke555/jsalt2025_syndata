@@ -2,6 +2,7 @@
 exp_name: fisher_chunks_1K_LoRAv3.7
 
 dataset_name: fisher_chunks_0.1K_v2.1
+val_dataset_name: /work/users/r/p/rphadke/JSALT/fisher_chunks_0.1K_v2.1VAL
 data_root: /work/users/r/p/rphadke/JSALT/
 
 tokenizer: custom
@@ -11,7 +12,7 @@ pretrain: /work/users/r/p/rphadke/JSALT/ckpts/pretrained_model_1250000.safetenso
 finetune: true
 
 learning_rate: 1e-8
-epochs: 20
+epochs: 30
 
 batch_size_per_gpu: 3200
 batch_size_type: frame
@@ -21,7 +22,8 @@ max_grad_norm: 1.0
 
 save_per_updates: 5000
 keep_last_n_checkpoints: 0
-last_per_updates: 2500
+last_per_updates: 1000
+val_per_updates: 20
 
 bnb_optimizer: false
 log_samples: false

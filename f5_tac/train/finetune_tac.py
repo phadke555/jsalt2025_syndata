@@ -27,6 +27,7 @@ def parse_args():
 
     parser.add_argument("--data_root", type=str, default=None, help="Base directory to datasets, overrides defaults.")
     parser.add_argument("--dataset_name", type=str, default="fisher_conversations", help="Name of dataset folder.")
+    parser.add_argument("--val_dataset_name", type=str, default="fisher_conversations", help="Name of val dataset folder.")
 
     parser.add_argument("--exp_name", type=str, default="f5_tac_finetune", help="Experiment name for logs/checkpoints.")
     parser.add_argument("--finetune", action="store_true", help="Whether to finetune from a pretrained checkpoint.")
@@ -53,6 +54,7 @@ def parse_args():
     # --------------------- Logging and Saving --------------------- #
     parser.add_argument("--save_per_updates", type=int, default=5000, help="Save checkpoint every N updates.")
     parser.add_argument("--last_per_updates", type=int, default=5000, help="Save last checkpoint every N updates.")
+    parser.add_argument("--val_per_updates", type=int, default=5000, help="Save last checkpoint every N updates.")
     parser.add_argument(
         "--keep_last_n_checkpoints",
         type=int, default=-1,
@@ -79,6 +81,7 @@ def main():
                 raise ValueError(f"Unknown config key: {key}")
     
     dataset_path = os.path.join(args.data_root, args.dataset_name) if args.data_root else args.dataset_name
+    val_dataset_path = os.path.join(args.data_root, args.val_dataset_name)
     checkpoint_path = os.path.join(args.data_root, "ckpts", args.exp_name)
     os.makedirs(checkpoint_path, exist_ok=True)
 
@@ -187,6 +190,8 @@ def main():
         max_grad_norm=1.0, # max_grad_norm is not in args
         mix_loss_lambda=1.0,
         logger=args.logger,
+        last_per_updates=int(args.last_per_updates),
+        val_per_updates=int(args.val_per_updates),
         recon_loss = True,
         wandb_project=f"finetune_f5_2speaker",
         wandb_run_name=args.exp_name,
@@ -196,9 +201,16 @@ def main():
     )
     
     # --- 7. Load Dataset and Start Training ---
-    print("Loading dataset...")
+    print("Loading train dataset...")
     train_dataset = load_conversation_dataset(
         dataset_path=dataset_path,
+        mel_spec_kwargs=mel_spec_kwargs
+    )
+    print("Train dataset length:", len(train_dataset))
+
+    print("Loading val dataset...")
+    val_dataset = load_conversation_dataset(
+        dataset_path=val_dataset_path,
         mel_spec_kwargs=mel_spec_kwargs
     )
     print("Train dataset length:", len(train_dataset))
@@ -206,6 +218,7 @@ def main():
     print("Starting training...")
     trainer.train(
         train_dataset=train_dataset,
+        val_dataset=val_dataset,
         collate_fn=conversation_collate_fn, # Pass your custom collate fn
         num_workers=18, # Adjust as needed
         resumable_with_seed=666,
