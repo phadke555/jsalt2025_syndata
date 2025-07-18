@@ -161,16 +161,23 @@ def main():
 
     # ----------------------------------------------------------
     # LoRA Experiment
-    from peft import LoraConfig, PeftModel, LoraModel, get_peft_model
+    # from peft import LoraConfig, PeftModel, LoraModel, get_peft_model
 
-    model = get_peft_model(model, lora_configv2)
-    model.print_trainable_parameters()
-
+    # model = get_peft_model(model, lora_configv2)
+    # model.print_trainable_parameters()
+    trainable = []
+    all = []
     for name, param in model.named_parameters():
         if "tac" in name or "text_embed.text_embed" in name or "input_embed" in name or "3.dwconv" in name:
             param.requires_grad = True
+            trainable.append(name)
+        else:
+            param.requires_grad = False
+        all.append(name)
+    
+    print(f"Total Params: {len(all)} | Trainable Params: {len(trainable)} | Proportion= {len(trainable)/len(all)}")
 
-    model.print_trainable_parameters()
+    # model.print_trainable_parameters()
 
     # ----------------------------------------------------------
 
