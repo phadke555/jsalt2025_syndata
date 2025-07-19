@@ -31,11 +31,11 @@ class DoubleDiT(DiT):
         self.blocks_B = copy.deepcopy(self.transformer_blocks)
         delattr(self, "transformer_blocks")
 
-        # self.cross_tacs = nn.ModuleList([
-        #     TAC(in_channels=self.dim, expansion_f=3, dropout=0.1)
-        #     for _ in range(self.depth)
-        # ])
-        self.cross_tac = TAC(in_channels=self.dim, expansion_f=3, dropout=0.1)
+        self.cross_tacs = nn.ModuleList([
+            TAC(in_channels=self.dim, expansion_f=3, dropout=0.1)
+            for _ in range(self.depth)
+        ])
+        # self.cross_tac = TAC(in_channels=self.dim, expansion_f=3, dropout=0.1)
 
     def forward(self, x_A, cond_A, text_A, mask_A,
                       x_B, cond_B, text_B, mask_B, time,
@@ -76,8 +76,8 @@ class DoubleDiT(DiT):
             x = torch.stack([x_A, x_B], dim=2)      # [B, T, 2, D]
             x = x.reshape(B*T, 2, D)
             mask = torch.ones(B*T, 2, device=x_A.device, dtype=torch.bool)
-            # tac = self.cross_tacs[i]
-            x = self.cross_tac(x, mask=mask) # [B*T, 2, D]
+            tac = self.cross_tacs[i]
+            x = tac(x, mask=mask) # [B*T, 2, D]
             x = x.reshape(B, T, 2, D)
             x_A, x_B = x[:, :, 0, :], x[:, :, 1, :]
 

@@ -181,7 +181,8 @@ def main():
             param.requires_grad = False
 
     print(f"Total Parameters = {all}   |   Trainable = {trainable}   |  Tac Params = {tac}   |   Proportion = {trainable/all}")
-
+    num_devices = torch.cuda.device_count()
+    print(f"Number of available CUDA devices: {num_devices}")
     print("Initializing Trainer...")
     trainer = Trainer(
         model,
@@ -226,7 +227,7 @@ def main():
         train_dataset=train_dataset,
         val_dataset=val_dataset,
         collate_fn=conversation_collate_fn, # Pass your custom collate fn
-        num_workers=18, # Adjust as needed
+        num_workers=12, # Adjust as needed
         resumable_with_seed=666,
     )
 

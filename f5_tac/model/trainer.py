@@ -8,6 +8,8 @@ import torch
 import torchaudio
 import wandb
 from accelerate import Accelerator
+from accelerate.data_loader import BatchSamplerShard
+from torch.utils.data import DistributedSampler
 from accelerate.utils import DistributedDataParallelKwargs
 from ema_pytorch import EMA
 from torch.optim import AdamW
@@ -295,7 +297,7 @@ class Trainer:
                 shuffle=True,
                 generator=generator,
             )
-            train_dataloader = DataLoader(
+            val_dataloader = DataLoader(
                 val_dataset,
                 collate_fn=collate_fn,
                 num_workers=num_workers,
@@ -307,12 +309,25 @@ class Trainer:
         elif self.batch_size_type == "frame":
             self.accelerator.even_batches = False
             sampler = SequentialSampler(train_dataset)
+            # sampler = DistributedSampler(
+            #     train_dataset,
+            #     num_replicas=self.accelerator.num_processes,
+            #     rank=self.accelerator.process_index,
+            #     shuffle=True,
+            # )
             batch_sampler = DynamicBatchSampler(
                 sampler,
                 self.batch_size_per_gpu,
                 max_samples=self.max_samples,
                 random_seed=resumable_with_seed,  # This enables reproducible shuffling
                 drop_residual=False,
+            )
+            sharded_batch_sampler = BatchSamplerShard(
+                batch_sampler,
+                num_processes=self.accelerator.num_processes,
+                process_index=self.accelerator.process_index,
+                split_batches=False,
+                even_batches=False
             )
             train_dataloader = DataLoader(
                 train_dataset,
@@ -321,7 +336,7 @@ class Trainer:
                 prefetch_factor=prefetch_factor,
                 pin_memory=True,
                 persistent_workers=True,
-                batch_sampler=batch_sampler,
+                batch_sampler=sharded_batch_sampler,
             )
             print("Train dataloader length:", len(train_dataloader))
             val_dataloader = DataLoader(
