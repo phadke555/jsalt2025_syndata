@@ -72,136 +72,136 @@ class CFMDD(nn.Module):
     def device(self):
         return next(self.parameters()).device
 
-@torch.no_grad()
-def sample_joint(
-    self,
-    texts: list[str],            # [text_A, text_B]
-    conds: torch.Tensor,         # shape [2, n_mels, T]
-    durations: list[int] | None = None,
-    lens: torch.Tensor | None = None,
-    steps=32,
-    cfg_strength=1.0,
-    sway_sampling_coef=None,
-    seed: int | None = None,
-    max_duration=4096,
-    vocoder: Callable[[float["b d n"]], float["b nw"]] | None = None,
-    use_epss=True,
-    no_ref_audio=False,
-    duplicate_test=False,
-    t_inter=0.1,
-    edit_mask=None,
-):
-    self.eval()
-    device = self.device
+    @torch.no_grad()
+    def sample_joint(
+        self,
+        texts: list[str],            # [text_A, text_B]
+        conds: torch.Tensor,         # shape [2, n_mels, T]
+        durations: list[int] | None = None,
+        lens: torch.Tensor | None = None,
+        steps=32,
+        cfg_strength=1.0,
+        sway_sampling_coef=None,
+        seed: int | None = None,
+        max_duration=4096,
+        vocoder: Callable[[float["b d n"]], float["b nw"]] | None = None,
+        use_epss=True,
+        no_ref_audio=False,
+        duplicate_test=False,
+        t_inter=0.1,
+        edit_mask=None,
+    ):
+        self.eval()
+        device = self.device
 
-    # Prepare conds → mel channels last: [2, T, D]
-    conds = conds.to(device)
-    if conds.ndim == 2:
-        conds = self.mel_spec(conds)
-    conds = conds.permute(0, 2, 1).to(next(self.parameters()).dtype)  # [2, T, D]
+        # Prepare conds → mel channels last: [2, T, D]
+        conds = conds.to(device)
+        if conds.ndim == 2:
+            conds = self.mel_spec(conds)
+        conds = conds.permute(0, 2, 1).to(next(self.parameters()).dtype)  # [2, T, D]
 
-    batch, cond_seq_len, D = conds.shape
-    if not exists(lens):
-        lens = torch.full((batch,), cond_seq_len, device=device, dtype=torch.long)
+        batch, cond_seq_len, D = conds.shape
+        if not exists(lens):
+            lens = torch.full((batch,), cond_seq_len, device=device, dtype=torch.long)
 
-    # Convert text inputs
-    if isinstance(texts, list):
-        if exists(self.vocab_char_map):
-            texts = list_str_to_idx(texts, self.vocab_char_map).to(device)
+        # Convert text inputs
+        if isinstance(texts, list):
+            if exists(self.vocab_char_map):
+                texts = list_str_to_idx(texts, self.vocab_char_map).to(device)
+            else:
+                texts = list_str_to_tensor(texts).to(device)
+            assert texts.shape[0] == batch  # Should be 2
+
+        # Duration logic
+        if isinstance(durations, int):
+            durations = torch.full((batch,), durations, device=device, dtype=torch.long)
+        durations = torch.tensor(durations, device=device, dtype=torch.long)
+        durations = torch.maximum(
+            torch.maximum((texts != -1).sum(dim=-1), lens) + 1, durations
+        ).clamp(max=max_duration)
+        max_duration = durations.amax()
+
+        # Build masks and step_cond per speaker
+        cond_mask = lens_to_mask(lens)  # [2, T]
+        conds = F.pad(conds, (0, 0, 0, max_duration - cond_seq_len), value=0.0)
+        if no_ref_audio:
+            conds = torch.zeros_like(conds)
+
+        cond_mask = F.pad(cond_mask, (0, max_duration - cond_mask.shape[-1]), value=False)
+        cond_mask = cond_mask.unsqueeze(-1)  # [2, T, 1]
+        step_cond = torch.where(cond_mask, conds, torch.zeros_like(conds))
+
+        # Split inputs per speaker
+        cond_A, cond_B = step_cond[0:1], step_cond[1:2]  # [1, T, D]
+        text_A, text_B = texts[0:1], texts[1:2]          # [1, L]
+        mask_A, mask_B = cond_mask[0:1], cond_mask[1:2]  # [1, T, 1]
+        dur_A, dur_B = durations[0], durations[1]       # scalars
+
+        # Noise initialization per speaker
+        torch.manual_seed(seed) if seed is not None else None
+        y0_A = torch.randn((1, dur_A, self.num_channels), device=device, dtype=step_cond.dtype)
+        y0_B = torch.randn((1, dur_B, self.num_channels), device=device, dtype=step_cond.dtype)
+
+        # Pad to max_duration for batching
+        y0_A = F.pad(y0_A, (0, 0, 0, max_duration - dur_A), value=0.0)
+        y0_B = F.pad(y0_B, (0, 0, 0, 0, max_duration - dur_B), value=0.0)
+
+        # Timestep schedule
+        if use_epss:
+            t = get_epss_timesteps(steps, device=device, dtype=step_cond.dtype)
         else:
-            texts = list_str_to_tensor(texts).to(device)
-        assert texts.shape[0] == batch  # Should be 2
+            t = torch.linspace(0, 1, steps + 1, device=device, dtype=step_cond.dtype)
+        if sway_sampling_coef is not None:
+            t = t + sway_sampling_coef * (torch.cos(torch.pi / 2 * t) - 1 + t)
 
-    # Duration logic
-    if isinstance(durations, int):
-        durations = torch.full((batch,), durations, device=device, dtype=torch.long)
-    durations = torch.tensor(durations, device=device, dtype=torch.long)
-    durations = torch.maximum(
-        torch.maximum((texts != -1).sum(dim=-1), lens) + 1, durations
-    ).clamp(max=max_duration)
-    max_duration = durations.amax()
+        # ODE function with CFG
+        def fn(t_cur, x_pair):
+            x_A, x_B = x_pair.chunk(2, dim=0)  # split along batch dim
+            if cfg_strength < 1e-5:
+                pred_A, pred_B = self.transformer(
+                    x_A, cond_A, text_A, mask_A,
+                    x_B, cond_B, text_B, mask_B,
+                    time=t_cur,
+                    drop_audio_cond=False,
+                    drop_text=False,
+                    cfg_infer=False,
+                    cache=True,
+                )
+                return torch.cat([pred_A, pred_B], dim=0)
 
-    # Build masks and step_cond per speaker
-    cond_mask = lens_to_mask(lens)  # [2, T]
-    conds = F.pad(conds, (0, 0, 0, max_duration - cond_seq_len), value=0.0)
-    if no_ref_audio:
-        conds = torch.zeros_like(conds)
-
-    cond_mask = F.pad(cond_mask, (0, max_duration - cond_mask.shape[-1]), value=False)
-    cond_mask = cond_mask.unsqueeze(-1)  # [2, T, 1]
-    step_cond = torch.where(cond_mask, conds, torch.zeros_like(conds))
-
-    # Split inputs per speaker
-    cond_A, cond_B = step_cond[0:1], step_cond[1:2]  # [1, T, D]
-    text_A, text_B = texts[0:1], texts[1:2]          # [1, L]
-    mask_A, mask_B = cond_mask[0:1], cond_mask[1:2]  # [1, T, 1]
-    dur_A, dur_B = durations[0], durations[1]       # scalars
-
-    # Noise initialization per speaker
-    torch.manual_seed(seed) if seed is not None else None
-    y0_A = torch.randn((1, dur_A, self.num_channels), device=device, dtype=step_cond.dtype)
-    y0_B = torch.randn((1, dur_B, self.num_channels), device=device, dtype=step_cond.dtype)
-
-    # Pad to max_duration for batching
-    y0_A = F.pad(y0_A, (0, 0, 0, max_duration - dur_A), value=0.0)
-    y0_B = F.pad(y0_B, (0, 0, 0, 0, max_duration - dur_B), value=0.0)
-
-    # Timestep schedule
-    if use_epss:
-        t = get_epss_timesteps(steps, device=device, dtype=step_cond.dtype)
-    else:
-        t = torch.linspace(0, 1, steps + 1, device=device, dtype=step_cond.dtype)
-    if sway_sampling_coef is not None:
-        t = t + sway_sampling_coef * (torch.cos(torch.pi / 2 * t) - 1 + t)
-
-    # ODE function with CFG
-    def fn(t_cur, x_pair):
-        x_A, x_B = x_pair.chunk(2, dim=0)  # split along batch dim
-        if cfg_strength < 1e-5:
-            pred_A, pred_B = self.transformer(
+            # Classifier-free guidance path
+            pred_cfg_A, pred_cfg_B = self.transformer(
                 x_A, cond_A, text_A, mask_A,
                 x_B, cond_B, text_B, mask_B,
                 time=t_cur,
                 drop_audio_cond=False,
                 drop_text=False,
-                cfg_infer=False,
+                cfg_infer=True,
                 cache=True,
             )
-            return torch.cat([pred_A, pred_B], dim=0)
+            pred_A, null_pred_A = pred_cfg_A.chunk(2, dim=0)
+            pred_B, null_pred_B = pred_cfg_B.chunk(2, dim=0)
+            guided_A = pred_A + (pred_A - null_pred_A) * cfg_strength
+            guided_B = pred_B + (pred_B - null_pred_B) * cfg_strength
+            return torch.cat([guided_A, guided_B], dim=0)
 
-        # Classifier-free guidance path
-        pred_cfg_A, pred_cfg_B = self.transformer(
-            x_A, cond_A, text_A, mask_A,
-            x_B, cond_B, text_B, mask_B,
-            time=t_cur,
-            drop_audio_cond=False,
-            drop_text=False,
-            cfg_infer=True,
-            cache=True,
-        )
-        pred_A, null_pred_A = pred_cfg_A.chunk(2, dim=0)
-        pred_B, null_pred_B = pred_cfg_B.chunk(2, dim=0)
-        guided_A = pred_A + (pred_A - null_pred_A) * cfg_strength
-        guided_B = pred_B + (pred_B - null_pred_B) * cfg_strength
-        return torch.cat([guided_A, guided_B], dim=0)
+        # Combine noise for integration
+        y0 = torch.cat([y0_A, y0_B], dim=0)  # [2, T_out, D]
 
-    # Combine noise for integration
-    y0 = torch.cat([y0_A, y0_B], dim=0)  # [2, T_out, D]
+        # Integrate ODE
+        trajectory = odeint(fn, y0, t, **self.odeint_kwargs)
+        self.transformer.clear_cache()
 
-    # Integrate ODE
-    trajectory = odeint(fn, y0, t, **self.odeint_kwargs)
-    self.transformer.clear_cache()
+        # Extract final and restore prompt frames
+        sampled = trajectory[-1]  # [2, T_out, D]
+        out = torch.where(cond_mask, conds, sampled)
 
-    # Extract final and restore prompt frames
-    sampled = trajectory[-1]  # [2, T_out, D]
-    out = torch.where(cond_mask, conds, sampled)
+        # Optional vocoding
+        if vocoder is not None:
+            out = out.permute(0, 2, 1).contiguous()  # [2, D, T_out]
+            out = vocoder(out)
 
-    # Optional vocoding
-    if vocoder is not None:
-        out = out.permute(0, 2, 1).contiguous()  # [2, D, T_out]
-        out = vocoder(out)
-
-    return out, trajectory
+        return out, trajectory
 
 
 
