@@ -25,6 +25,12 @@ f5_tac/train/load_checkpoint.py
 batch_infer.slurm
 eval_metrics.slurm
 diarize.slurm
+<<<<<<< HEAD
 test_vadtext.ipynb
 unittest_ft.slurm
 unittest_sa.slurm
+=======
+unittest_ft.slurm
+unittest_sa.slurm
+test_vadtext.ipynb
+>>>>>>> 847fa4747740c54a54d205f90a4aea65cdd59c9f
