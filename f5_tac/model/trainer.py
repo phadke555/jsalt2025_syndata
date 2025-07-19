@@ -322,13 +322,13 @@ class Trainer:
                 random_seed=resumable_with_seed,  # This enables reproducible shuffling
                 drop_residual=False,
             )
-            sharded_batch_sampler = BatchSamplerShard(
-                batch_sampler,
-                num_processes=self.accelerator.num_processes,
-                process_index=self.accelerator.process_index,
-                split_batches=False,
-                even_batches=False
-            )
+            # sharded_batch_sampler = BatchSamplerShard(
+            #     batch_sampler,
+            #     num_processes=self.accelerator.num_processes,
+            #     process_index=self.accelerator.process_index,
+            #     split_batches=False,
+            #     even_batches=False
+            # )
             train_dataloader = DataLoader(
                 train_dataset,
                 collate_fn=collate_fn,
@@ -336,7 +336,7 @@ class Trainer:
                 prefetch_factor=prefetch_factor,
                 pin_memory=True,
                 persistent_workers=True,
-                batch_sampler=sharded_batch_sampler,
+                batch_sampler=batch_sampler,
             )
             print("Train dataloader length:", len(train_dataloader))
             val_dataloader = DataLoader(

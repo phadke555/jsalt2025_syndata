@@ -75,6 +75,12 @@ class TAC(torch.nn.Module):
         )
         self.norm = get_layer(norm_type)(in_channels)
 
+        for module in self.modules():
+            if isinstance(module, torch.nn.Linear):
+                torch.nn.init.uniform_(module.weight, a=-0.01, b=0.01)
+                if module.bias is not None:
+                    torch.nn.init.constant_(module.bias, 0.0)
+
     def forward(self, inp, mask=None):
         # bsz, mics, frames, channels
         bsz, mics, channels = inp.shape
