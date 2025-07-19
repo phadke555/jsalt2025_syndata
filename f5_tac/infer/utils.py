@@ -122,9 +122,8 @@ def generate_sample(model, vocoder, wav_A, wav_B, text_A, text_B, device):
         durations=durations,
         vocoder=vocoder,
         steps=32,
-        cfg_strength=1.5,
+        cfg_strength=0.0,
         sway_sampling_coef=-1.0,
-        seed=42,
         max_duration=4096,
         use_epss=True
     )
