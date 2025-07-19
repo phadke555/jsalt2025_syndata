@@ -19,13 +19,15 @@ from f5_tac.model.cfm import CFMWithTAC
 from f5_tts.model.dataset import DynamicBatchSampler, collate_fn
 from f5_tts.model.utils import default, exists
 
+from torch import nn
+
 # trainer
 
 
 class Trainer:
     def __init__(
         self,
-        model: CFMWithTAC,
+        model: nn.Module,
         epochs,
         learning_rate,
         num_warmup_updates=20000,
@@ -37,6 +39,8 @@ class Trainer:
         max_samples=32,
         grad_accumulation_steps=1,
         max_grad_norm=1.0,
+        recon_loss = False,
+        mix_loss_lambda=1.0,
         noise_scheduler: str | None = None,
         duration_predictor: torch.nn.Module | None = None,
         logger: str | None = "wandb",  # "wandb" | "tensorboard" | None
@@ -128,6 +132,9 @@ class Trainer:
         self.local_vocoder_path = local_vocoder_path
 
         self.noise_scheduler = noise_scheduler
+
+        self.mix_loss_lambda = mix_loss_lambda
+        self.recon_loss = recon_loss
 
         self.duration_predictor = duration_predictor
 
@@ -374,17 +381,31 @@ class Trainer:
 
 
                     # --- FIXED: Call the new model and unpack all return values ---
-                    loss_A, loss_B, cond_A, pred_A, cond_B, pred_B = self.model(
-                        mel_A=mel_A,
-                        text_A=text_A,
-                        mel_lengths_A=mel_lengths_A,
-                        mel_B=mel_B,
-                        text_B=text_B,
-                        mel_lengths_B=mel_lengths_B,
-                        noise_scheduler=self.noise_scheduler,
-                    )
-                    total_loss = loss_A + loss_B
-                    self.accelerator.backward(total_loss)
+                    if self.recon_loss:
+                        loss_A, loss_B, mix_loss, cond_A, pred_A, cond_B, pred_B = self.model(
+                            mel_A=mel_A,
+                            text_A=text_A,
+                            mel_lengths_A=mel_lengths_A,
+                            mel_B=mel_B,
+                            text_B=text_B,
+                            mel_lengths_B=mel_lengths_B,
+                            noise_scheduler=self.noise_scheduler,
+                        )
+                        total_loss = loss_A + loss_B + self.mix_loss_lambda * mix_loss
+                        self.accelerator.backward(total_loss)
+                    else:
+                        loss_A, loss_B, cond_A, pred_A, cond_B, pred_B = self.model(
+                            mel_A=mel_A,
+                            text_A=text_A,
+                            mel_lengths_A=mel_lengths_A,
+                            mel_B=mel_B,
+                            text_B=text_B,
+                            mel_lengths_B=mel_lengths_B,
+                            noise_scheduler=self.noise_scheduler,
+                        )
+                        total_loss = loss_A + loss_B
+                        self.accelerator.backward(total_loss)
+
 
                     # ----------------------------------------------
                     # Check LoRA works as expected
@@ -411,15 +432,27 @@ class Trainer:
                     progress_bar.set_postfix(update=str(global_update), loss=total_loss.item())
 
                 if self.accelerator.is_local_main_process:
-                    self.accelerator.log(
-                        {
-                            "loss": total_loss.item(),
-                            "loss_A": loss_A.item(),
-                            "loss_B": loss_B.item(),
-                            "lr": self.scheduler.get_last_lr()[0]
-                        }, 
-                        step=global_update
-                    )
+                    if self.recon_loss:
+                        self.accelerator.log(
+                            {
+                                "loss": total_loss.item(),
+                                "loss_A": loss_A.item(),
+                                "loss_B": loss_B.item(),
+                                "reconstruction_loss": mix_loss.item(),
+                                "lr": self.scheduler.get_last_lr()[0]
+                            }, 
+                            step=global_update
+                        )
+                    else:
+                        self.accelerator.log(
+                            {
+                                "loss": total_loss.item(),
+                                "loss_A": loss_A.item(),
+                                "loss_B": loss_B.item(),
+                                "lr": self.scheduler.get_last_lr()[0]
+                            }, 
+                            step=global_update
+                        )
                     if self.logger == "tensorboard":
                         self.writer.add_scalar("loss", total_loss.item(), global_update)
                         self.writer.add_scalar("lr", self.scheduler.get_last_lr()[0], global_update)

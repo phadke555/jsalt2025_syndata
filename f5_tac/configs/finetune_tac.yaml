@@ -1,16 +1,16 @@
 # ----------------------- F5-TAC Finetune Config ----------------------- #
-exp_name: fisher_chunks_1K_LoRAv2
+exp_name: fisher_chunks_0.1K_LoRAv4.4
 
-dataset_name: fisher_chunks_1Kv2
+dataset_name: fisher_chunks_0.1K_v3.0
 data_root: /export/fs06/rphadke1
 
 tokenizer: custom
-tokenizer_path: /export/fs06/rphadke1/data/fisher_chunks_1Kv2/vocab.txt
+tokenizer_path: /export/fs06/rphadke1/data/fisher_chunks_0.1K_v3.0/vocab.txt
 
 pretrain: /export/fs06/rphadke1/ckpts/pretrained_model_1250000.safetensors
 finetune: true
 
-learning_rate: 1e-8
+learning_rate: 1e-7
 epochs: 10
 
 batch_size_per_gpu: 3200
@@ -19,9 +19,9 @@ max_samples: 64
 grad_accumulation_steps: 1
 max_grad_norm: 1.0
 
-save_per_updates: 20000
+save_per_updates: 5000
 keep_last_n_checkpoints: 0
-last_per_updates: 10000
+last_per_updates: 1000
 
 bnb_optimizer: false
 log_samples: false

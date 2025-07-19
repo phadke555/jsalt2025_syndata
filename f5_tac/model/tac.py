@@ -75,7 +75,7 @@ class TAC(torch.nn.Module):
         )
         self.norm = get_layer(norm_type)(in_channels)
 
-        self.alpha = torch.nn.Parameter(torch.tensor(1e-6))
+        self.alpha = torch.nn.Parameter(torch.tensor(1e-1))
 
     def forward(self, inp, mask=None):
         # bsz, mics, frames, channels

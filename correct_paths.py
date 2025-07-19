@@ -3,14 +3,16 @@ from pathlib import Path
 import pyarrow as pa
 from datasets.arrow_writer import ArrowWriter
 
+#fs06/rphadke1/data/fisher_chunks_0.1K_v2.1
+# fs06/rphadke1/data/fisher_chunks_0.1K_v3.0
 
-output_dir   = Path("/export/fs06/rphadke1/data/fisher_chunks")
-metadata_path = "/export/fs06/rphadke1/data/fisher_chunks/metadata.csv"
+output_dir   = Path("/export/fs06/rphadke1/data/fisher_chunks_v2.1")
+metadata_path = output_dir / "metadata.csv"
 arrow_path   = output_dir / "raw.arrow"
 
 # 2. Load & fix the CSV
-old_prefix = "/work/users/r/p/rphadke/JSALT"
-new_prefix = "/export/fs06/rphadke1/data"
+old_prefix = "/export/fs06/rphadke1/data/fisher_chunks_v2"
+new_prefix = "/export/fs06/rphadke1/data/fisher_chunks_v2.1"
 
 df = pd.read_csv(metadata_path)
 df["speaker_A_wav"] = df["speaker_A_wav"].str.replace(

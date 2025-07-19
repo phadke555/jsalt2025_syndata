@@ -11,10 +11,11 @@ import yaml
 
 # --- MODIFICATION: Import your new modules ---
 from f5_tac.model.cfm import CFMWithTAC
+from f5_tac.model.reccfm import CFMWithTACRecon
 from f5_tac.model.backbones.dittac import DiTWithTAC
 from f5_tac.model.trainer import Trainer
 from f5_tac.model.dataset import load_conversation_dataset, conversation_collate_fn
-from f5_tac.configs.model_kwargs import mel_spec_kwargs, dit_cfg, lora_configv2
+from f5_tac.configs.model_kwargs import mel_spec_kwargs, dit_cfg, lora_configv2, lora_configv3
 from f5_tts.model.utils import get_tokenizer
 
 # --- Argument Parsing (adapted for finetuning TAC model) ---
@@ -100,7 +101,7 @@ def main():
         mel_dim=mel_spec_kwargs["n_mel_channels"]
     )
     
-    model = CFMWithTAC(
+    model = CFMWithTACRecon(
         transformer=transformer_backbone,
         mel_spec_kwargs=mel_spec_kwargs,
         vocab_char_map=vocab_char_map,
@@ -125,6 +126,19 @@ def main():
 
     # 3) Strip an ‘ema_model.’ prefix if it sneaked in
     state = {k.replace("ema_model.", ""): v for k, v in state.items()}
+
+    old_embed_weight = state["transformer.text_embed.text_embed.weight"]
+    random_spkchg_init = torch.randn(1, old_embed_weight.shape[1]) * 0.01
+    print("\n == Spk Chg Token Init ==")
+    print(random_spkchg_init)
+    
+    with torch.no_grad():
+        new_embed_weight = torch.cat([
+            old_embed_weight,                               # copy existing rows
+            random_spkchg_init  # random init new row
+        ], dim=0)
+    
+    state["transformer.text_embed.text_embed.weight"] = new_embed_weight
 
 
     # 5) Finally load with strict=False to pick up whatever lines up
@@ -151,9 +165,10 @@ def main():
     model.print_trainable_parameters()
 
     for name, param in model.named_parameters():
-        if "tac" in name or "2.dwconv" in name or "3.dwconv" in name:
+        if "tac" in name or "text_embed.text_embed" in name or "input_embed" in name or "3.dwconv" in name:
             param.requires_grad = True
 
+    model.print_trainable_parameters()
     # ----------------------------------------------------------
 
 
@@ -170,10 +185,12 @@ def main():
         max_samples=int(args.max_samples),
         grad_accumulation_steps=int(args.grad_accumulation_steps),
         max_grad_norm=1.0, # max_grad_norm is not in args
+        recon_loss=True,
         logger=args.logger,
         wandb_project=f"finetune_f5_2speaker",
         wandb_run_name=args.exp_name,
         log_samples=args.log_samples,
+        bnb_optimizer=True,
         accelerate_kwargs={"mixed_precision": "bf16"}
     )
     
@@ -189,7 +206,7 @@ def main():
     trainer.train(
         train_dataset=train_dataset,
         collate_fn=conversation_collate_fn, # Pass your custom collate fn
-        num_workers=8, # Adjust as needed
+        num_workers=16, # Adjust as needed
         resumable_with_seed=666,
     )
 
