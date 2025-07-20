@@ -17,7 +17,6 @@ from pathlib import Path
 
 import pandas as pd
 import pyarrow as pa
-import soundfile as sf
 from lhotse import CutSet, RecordingSet, SupervisionSet
 from datasets.arrow_writer import ArrowWriter
 

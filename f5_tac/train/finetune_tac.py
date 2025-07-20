@@ -169,9 +169,17 @@ def main():
     for name, param in model.named_parameters():
         if "tac" in name or "text_embed.text_embed" in name or "3.dwconv" in name:
             param.requires_grad = True
+            print(f"{name}: mean={param.data.mean().item():.6f}, std={param.data.std().item():.6f}, max={param.data.abs().max().item():.6f}")
 
+    model.print_trainable_parameters()
     # ----------------------------------------------------------
 
+    num_devices = torch.cuda.device_count()
+    print(f"Number of available CUDA devices: {num_devices}")
+
+    from f5_tac.model.utils import list_str_to_idx
+    text = "and i generally<sil><sil> prefer <utt>  eating at home <utt>  hello andy <utt>  how are you <utt>  good <utt>  do you have any idea what's going on <utt> "
+    print(list_str_to_idx([text], vocab_char_map))
 
     # --- 6. Instantiate Trainer ---
     print("Initializing Trainer...")
