@@ -12,8 +12,8 @@ def main():
     print("🔄 Combining generated clips...")
     process_directory(args.generations_input_dir, args.generations_output_dir, mode="generated")
 
-    print("\n🔄 Combining original chunks...")
-    process_directory(args.real_input_dir, args.real_output_dir, mode="original")
+    # print("\n🔄 Combining original chunks...")
+    # process_directory(args.real_input_dir, args.real_output_dir, mode="original")
 
     print("\n✅ Done combining all audio!")
 

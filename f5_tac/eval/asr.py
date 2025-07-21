@@ -15,10 +15,15 @@ def main():
     parser.add_argument("--data_root", type=str, required=True)
     args = parser.parse_args()
 
-    ref_dir = os.path.join(args.data_root, "concatenated_real")
-    gen_dir = os.path.join(args.data_root, "concatenated_generations")
+    # ref_dir = os.path.join(args.data_root, "concatenated_real")
+    gen_dir = os.path.join(args.data_root, "A_concatenated_generations")
 
-    ref_files = sorted(glob(os.path.join(ref_dir, "*.wav")))
+    ref_files = [
+        "/work/users/r/p/rphadke/JSALT/fisher/fisher_wavs/fe_03_00001-A.wav",
+        "/work/users/r/p/rphadke/JSALT/fisher/fisher_wavs/fe_03_00002-A.wav",
+        "/work/users/r/p/rphadke/JSALT/fisher/fisher_wavs/fe_03_00003-A.wav",
+        "/work/users/r/p/rphadke/JSALT/fisher/fisher_wavs/fe_03_00004-A.wav"
+    ]
     gen_files = sorted(glob(os.path.join(gen_dir, "*.wav")))
 
     assert len(ref_files) == len(gen_files), "Reference/gen counts differ!"
@@ -87,12 +92,22 @@ def main():
         df.to_csv(os.path.join(combined_output_dir, "tts_asr_stats.csv"), index=False)
         print(f"Saved {len(df)} rows to tts_asr_stats.csv")
 
-        diff_tokens = ndiff(ref_text.split(), hyp_text.split())
-        diff_file = os.path.join(combined_output_dir, f"{conv_id}_diff.txt")
-        with open(diff_file, "w", encoding="utf-8") as f:
-            for token in diff_tokens:
-                f.write(token + "\n")
-        print(f"Wrote diff to {diff_file}")
+        ref_file = os.path.join(combined_output_dir, f"{conv_id}_real.txt")
+        with open(ref_file, "w", encoding="utf-8") as f:
+            for word in ref_text:
+                f.write(word)
+        
+        gen_file = os.path.join(combined_output_dir, f"{conv_id}_gen.txt")
+        with open(gen_file, "w", encoding="utf-8") as f:
+            for word in hyp_text:
+                f.write(word)
+
+        # diff_tokens = ndiff(ref_text.split(), hyp_text.split())
+        # diff_file = os.path.join(combined_output_dir, f"{conv_id}_diff.txt")
+        # with open(diff_file, "w", encoding="utf-8") as f:
+        #     for token in diff_tokens:
+        #         f.write(token + "\n")
+        print(f"Wrote diff to {gen_file}")
         print("============================================================")
 
 

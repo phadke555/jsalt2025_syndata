@@ -27,10 +27,10 @@ from f5_tts.infer.utils_infer import load_vocoder
 from f5_tts.model.utils import get_tokenizer
 import logging
 from peft import LoraConfig, PeftModel, LoraModel, get_peft_model
-from f5_tac.configs.model_kwargs import lora_configv1, lora_configv2
+from f5_tac.configs.model_kwargs import lora_configv1, lora_configv2, lora_configv3
 
 
-def load_model_and_vocoder(ckpt_path, vocab_file, device, lora=False):
+def load_model_and_vocoder(ckpt_path, vocab_file, lora=False):
     """Load model and vocoder."""
     vocab_char_map, vocab_size = get_tokenizer(vocab_file, "custom")
     # mel_spec_kwargs = dict(
@@ -52,13 +52,17 @@ def load_model_and_vocoder(ckpt_path, vocab_file, device, lora=False):
         vocab_char_map=vocab_char_map
     )
     ckpt = torch.load(ckpt_path, map_location="cpu")
+    state = ckpt["ema_model_state_dict"]
     if lora:
-        model = get_peft_model(model, lora_configv2)
-    model.load_state_dict(ckpt["model_state_dict"])
+        model = get_peft_model(model, lora_configv3)
 
-    model.to(device).eval()
+    state = {k.replace("ema_model.", ""): v for k, v in state.items()}
+    incomplete = model.load_state_dict(state, strict=False)
+    print(incomplete)
 
-    vocoder = load_vocoder().to(device)
+    model.eval()
+
+    vocoder = load_vocoder()
     return model, vocoder
 
 
@@ -182,6 +186,16 @@ def process_row(row, model, vocoder, out_dir, device, transcript_file):
     A_pad = F.pad(wav_A, (0, max_len - wav_A.shape[-1]))
     B_pad = F.pad(wav_B, (0, max_len - wav_B.shape[-1]))
 
+    A_path = os.path.join(out_dir, "A_generated_chunks")
+    os.makedirs(A_path, exist_ok=True)
+    A_wav_path = os.path.join(A_path, f"{clip_id}_generated.wav")
+    save_audio(A_pad, A_wav_path, sr)
+
+    B_path = os.path.join(out_dir, "B_generated_chunks")
+    os.makedirs(B_path, exist_ok=True)
+    B_wav_path = os.path.join(B_path, f"{clip_id}_generated.wav")
+    save_audio(B_pad, B_wav_path, sr)
+
     mono = A_pad + B_pad
 
     # gen_waveforms = vocoder.decode(
@@ -189,22 +203,44 @@ def process_row(row, model, vocoder, out_dir, device, transcript_file):
     # ).detach().cpu()
 
     # --- Save combined generated audio ---
-    out_wav_path = os.path.join(out_dir, f"{clip_id}_generated.wav")
+    mono_path = os.path.join(out_dir, "generated_chunks")
+    os.makedirs(mono_path, exist_ok=True)
+    out_wav_path = os.path.join(mono_path, f"{clip_id}_generated.wav")
     save_audio(mono, out_wav_path, sr)
 
 
+def split_dataframe(df, num_chunks):
+    """Split DataFrame into approximately equal-sized chunks"""
+    return [df.iloc[i::num_chunks] for i in range(num_chunks)]
 
-
-def process_all(metadata_path, out_dir, model, vocoder, device):
+import multiprocessing
+def process_all(metadata_path, out_dir, model, vocoder, devices):
     """Loop over all metadata rows and process them."""
     os.makedirs(out_dir, exist_ok=True)
 
     df = pd.read_csv(metadata_path)
-    for idx, row in df.iterrows():
-        conversation_id = f"{row['recording_id']}_{idx}"
-        print(f"Processing {conversation_id}...")
-        process_row(row, model, vocoder, out_dir, device, conversation_id)
+    df_chunks = split_dataframe(df, len(devices))
+    # Create a process for each GPU
+    processes = []
+    for i, (device, df_chunk) in enumerate(zip(devices, df_chunks)):
+        p = multiprocessing.Process(
+            target=process_rows_on_device,
+            args=(df_chunk, model, vocoder, out_dir, device, i)
+        )
+        p.start()
+        processes.append(p)
 
+    for p in processes:
+        p.join()
+
+def process_rows_on_device(df_chunk, model, vocoder, out_dir, device, rank):
+    """Process subset of rows on a specific GPU."""
+    model = model.to(device)
+    vocoder = vocoder.to(device)
+    for idx, row in df_chunk.iterrows():
+        conversation_id = f"{row['recording_id']}_{idx}"
+        print(f"[GPU {rank}] Processing {conversation_id}...")
+        process_row(row, model, vocoder, out_dir, device, conversation_id)
 
 import os
 import argparse
