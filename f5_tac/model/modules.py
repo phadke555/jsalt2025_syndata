@@ -31,6 +31,7 @@ class DiTBlockWithTAC(DiTBlock):
 
         # per active speaker fusion
         # x = x.view(B, S, T, D) # -> (B, S, T, D)
+            
         # Convert (B*S, T, D) → (B, S, T, D) using chunk
         x = torch.stack(torch.chunk(x, S, dim=0), dim=1)
 
@@ -44,5 +45,10 @@ class DiTBlockWithTAC(DiTBlock):
         # per speaker average internally
         x = self.tac(x, mask=spk_mask)
         x = x.reshape(B, T, S, D).permute(0, 2, 1, 3)
-        x = x.reshape(B*S, T, D)   # -> (B⋅S, T, D)
+
+        # x = x.reshape(B*S, T, D)   # -> (B⋅S, T, D)
+
+        blocks = [x[:, i] for i in range(S)]    # each (B, T, D)
+        x = torch.cat(blocks, dim=0)            # → (B⋅S, T, D)
+
         return x

@@ -54,8 +54,12 @@ class TAC(torch.nn.Module):
         dropout=0.0,
         norm_type="LayerNorm",
         activation="relu",
+        init_scale=0.01,
     ):
         super(TAC, self).__init__()
+        self.activation = activation
+        self.init_scale = init_scale
+
         hid_channels = int(in_channels * expansion_f)
         self.hid_channels = hid_channels
         self.transform_shared = torch.nn.Sequential(
@@ -75,7 +79,26 @@ class TAC(torch.nn.Module):
         )
         self.norm = get_layer(norm_type)(in_channels)
 
-        self.alpha = torch.nn.Parameter(torch.tensor(1e-6))
+        # self.alpha = torch.nn.Parameter(torch.tensor(1e-6))
+
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, torch.nn.Linear):
+            # choose initializer based on activation
+            if self.activation == 'relu':
+                # He (Kaiming) initialization for ReLU
+                torch.nn.init.kaiming_uniform_(m.weight, a=0, nonlinearity='relu')
+            else:
+                # Xavier/Glorot init with gain for other nonlinearities
+                gain = torch.nn.init.calculate_gain(self.activation)
+                torch.nn.init.xavier_uniform_(m.weight, gain=gain)
+            # zero biases
+            if m.bias is not None:
+                torch.nn.init.zeros_(m.bias)
+
+            if self.init_scale != 1.0:
+                m.weight.data.mul_(self.init_scale)
 
     def forward(self, inp, mask=None):
         # bsz, mics, frames, channels
@@ -99,7 +122,7 @@ class TAC(torch.nn.Module):
             bsz * mics,
             2 * self.hid_channels,
         )
-        out = self.norm(self.transform_final(transformed)) * self.alpha + inp.reshape(
+        out = self.norm(self.transform_final(transformed)) + inp.reshape(
             bsz * mics, channels
         )
         return out.reshape(bsz, mics, channels)

@@ -3,20 +3,23 @@ import os
 import shutil
 from importlib.resources import files
 from functools import partial
-
 import torch
 from cached_path import cached_path
 
 import yaml
 
+from f5_tts.model.cfm import CFM
+from f5_tts.model.backbones.dit import DiT
+
 # --- MODIFICATION: Import your new modules ---
-from f5_tac.model.cfm import CFMWithTAC
-from f5_tac.model.reccfm import CFMWithTACRecon
-from f5_tac.model.backbones.dittac import DiTWithTAC
+
+from f5_tac.model.dlcfm import CFMDD
+from f5_tac.model.backbones.doubledit import DoubleDiT
+from f5_tac.configs.model_kwargs import dit_cfg, mel_spec_kwargs
+from f5_tts.model.utils import get_tokenizer
 from f5_tac.model.trainer import Trainer
 from f5_tac.model.dataset import load_conversation_dataset, conversation_collate_fn
-from f5_tac.configs.model_kwargs import mel_spec_kwargs, dit_cfg, lora_configv2
-from f5_tts.model.utils import get_tokenizer
+
 
 # --- Argument Parsing (adapted for finetuning TAC model) ---
 def parse_args():
@@ -79,7 +82,7 @@ def main():
                 setattr(args, key, val)
             else:
                 raise ValueError(f"Unknown config key: {key}")
-    
+            
     dataset_path = os.path.join(args.data_root, args.dataset_name) if args.data_root else args.dataset_name
     val_dataset_path = os.path.join(args.data_root, args.val_dataset_name)
     checkpoint_path = os.path.join(args.data_root, "ckpts", args.exp_name)
@@ -87,32 +90,10 @@ def main():
 
     local_pretrain_path = args.pretrain
     print(f"Using pretrained model from: {args.pretrain}")
-    
-    # --- 2. Setup Tokenizer ---
+
     vocab_char_map, vocab_size = get_tokenizer(args.tokenizer_path,args.tokenizer)
     print(f"Loaded tokenizer with vocab size: {vocab_size}")
 
-    # --- 3. Define Model Architecture and Mel Spectrogram settings ---
-    # These should match the architecture of the pretrained model you are loading.
-
-    # --- 4. Instantiate Your New Models ---
-    print("Instantiating F5-TAC models...")
-    transformer_backbone = DiTWithTAC(
-        **dit_cfg,
-        num_speakers=2, # Critical for TAC blocks
-        text_num_embeds=vocab_size,
-        mel_dim=mel_spec_kwargs["n_mel_channels"]
-    )
-    
-    model = CFMWithTACRecon(
-        transformer=transformer_backbone,
-        mel_spec_kwargs=mel_spec_kwargs,
-        vocab_char_map=vocab_char_map,
-    )
-    
-
-
-    # --- 5. CRITICAL: Load Pretrained Weights into the New Architecture ---
     print("Loading pretrained weights...")
     # 1) Load the raw checkpoint
     if local_pretrain_path.endswith(".safetensors"):
@@ -121,7 +102,25 @@ def main():
     else:
         ckpt = torch.load(local_pretrain_path, map_location="cpu")
 
-    # 2) Unwrap any nesting
+    old_transformer = DiT(
+        **dit_cfg,
+        text_num_embeds=vocab_size,
+        mel_dim=mel_spec_kwargs["n_mel_channels"]
+    )
+
+    old_model = CFM(
+        transformer=old_transformer,
+        mel_spec_kwargs=mel_spec_kwargs,
+        vocab_char_map=vocab_char_map,
+    )
+
+    tb = 0
+    for name, param in old_model.named_parameters():
+        if "transformer_blocks" in name:
+            tb += 1
+
+    print(f"Weights related to transformer blocks = {tb}   |   Total Params in Old Model = {len(ckpt.keys())}")
+
     state = (
         ckpt.get("model_state_dict", 
         ckpt.get("ema_model_state_dict", ckpt))
@@ -130,39 +129,55 @@ def main():
     # 3) Strip an ‘ema_model.’ prefix if it sneaked in
     state = {k.replace("ema_model.", ""): v for k, v in state.items()}
 
+    incomplete = old_model.load_state_dict(state, strict = False)
 
-    # 5) Finally load with strict=False to pick up whatever lines up
-    incompatible = model.load_state_dict(state, strict=False)
+    # --- 4. Instantiate Your New Models ---
+    print("Instantiating F5-TAC models...")
+    transformer_backbone = DoubleDiT(
+        **dit_cfg,
+        text_num_embeds=vocab_size,
+        mel_dim=mel_spec_kwargs["n_mel_channels"]
+    )
 
-    print("✔ loaded partial state:")
-    print("  • missing   (should only be tac module keys)   :", incompatible.missing_keys[:5], "…")
-    print("  • unexpected  :", incompatible.unexpected_keys[:5], "…")
 
-    # # Freeze initial transformer layers
-    # freeze_layers = 8  # freeze first 12 layers
-    # for i, block in enumerate(transformer_backbone.transformer_blocks):
-    #     if i < freeze_layers:
-    #         for name, param in block.named_parameters():
-    #             if "norm" not in name and "tac" not in name:  # keep LayerNorm trainable
-    #                 param.requires_grad = False
-    # print(f"✔️ Frozen first {freeze_layers} layers of DiTWithTAC")
+    print(transformer_backbone.time_embed.load_state_dict(old_transformer.time_embed.state_dict()))
+    print(transformer_backbone.text_embed.load_state_dict(old_transformer.text_embed.state_dict()))
+    print(transformer_backbone.input_embed.load_state_dict(  old_transformer.input_embed.state_dict() ))
+    print(transformer_backbone.rotary_embed.load_state_dict( old_transformer.rotary_embed.state_dict() ))
+    print(transformer_backbone.norm_out.   load_state_dict(  old_transformer.norm_out.state_dict()    ))
+    print(transformer_backbone.proj_out.   load_state_dict(  old_transformer.proj_out.state_dict()    ))
 
-    # ----------------------------------------------------------
-    # LoRA Experiment
-    from peft import LoraConfig, PeftModel, LoraModel, get_peft_model
+    # Copy each DiTBlock into both branches
+    for i, old_block in enumerate(old_transformer.transformer_blocks):
+        # block A
+        transformer_backbone.blocks_A[i].load_state_dict(old_block.state_dict(), strict=True)
+        # block B
+        transformer_backbone.blocks_B[i].load_state_dict(old_block.state_dict(), strict=True)
 
+    model = CFMDD(
+        transformer=transformer_backbone,
+        mel_spec_kwargs=mel_spec_kwargs,
+        vocab_char_map=vocab_char_map,
+    )
+    from f5_tac.configs.model_kwargs import lora_configv2
+    from peft import get_peft_model
     model = get_peft_model(model, lora_configv2)
-    model.print_trainable_parameters()
 
+    # print(model)
+    trainable, all, tac = 0, 0, 0
     for name, param in model.named_parameters():
+        all += 1
         if "tac" in name or "text_embed.text_embed" in name or "input_embed" in name:
+            trainable += 1
             param.requires_grad = True
-            
+
+
     model.print_trainable_parameters()
-    # ----------------------------------------------------------
+    print(f"Total Parameters = {all}   |   Trainable = {trainable}   |  Proportion = {trainable/all}")
 
+    num_devices = torch.cuda.device_count()
+    print(f"Number of available CUDA devices: {num_devices}")
 
-    # --- 6. Instantiate Trainer ---
     print("Initializing Trainer...")
     trainer = Trainer(
         model,
@@ -200,18 +215,17 @@ def main():
         dataset_path=val_dataset_path,
         mel_spec_kwargs=mel_spec_kwargs
     )
-    print("Train dataset length:", len(train_dataset))
+    print("Val dataset length:", len(val_dataset))
     
     print("Starting training...")
     trainer.train(
         train_dataset=train_dataset,
         val_dataset=val_dataset,
         collate_fn=conversation_collate_fn, # Pass your custom collate fn
-        num_workers=18, # Adjust as needed
+        num_workers=12, # Adjust as needed
         resumable_with_seed=666,
     )
 
 
 if __name__ == "__main__":
     main()
-

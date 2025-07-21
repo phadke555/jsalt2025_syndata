@@ -7,7 +7,9 @@ import os
 import torch
 import torchaudio
 import wandb
+from datetime import timedelta
 from accelerate import Accelerator
+from accelerate.utils import InitProcessGroupKwargs
 from accelerate.utils import DistributedDataParallelKwargs
 from ema_pytorch import EMA
 from torch.optim import AdamW
@@ -59,6 +61,7 @@ class Trainer:
         model_cfg_dict: dict = dict(),  # training config
     ):
         ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
+        init_kwargs = InitProcessGroupKwargs(timeout=timedelta(seconds=3600))
 
         if logger == "wandb" and not wandb.api.api_key:
             logger = None
@@ -66,7 +69,7 @@ class Trainer:
 
         self.accelerator = Accelerator(
             log_with=logger if logger == "wandb" else None,
-            kwargs_handlers=[ddp_kwargs],
+            kwargs_handlers=[ddp_kwargs, init_kwargs],
             gradient_accumulation_steps=grad_accumulation_steps,
             **accelerate_kwargs,
         )
@@ -153,39 +156,43 @@ class Trainer:
         return self.accelerator.is_main_process
 
     def save_checkpoint(self, update, last=False):
-        self.accelerator.wait_for_everyone()
-        if self.accelerator.is_main_process:
-            checkpoint = dict(
-                model_state_dict=self.accelerator.unwrap_model(self.model).state_dict(),
-                optimizer_state_dict=self.optimizer.state_dict(),
-                ema_model_state_dict=self.ema_model.state_dict(),
-                scheduler_state_dict=self.scheduler.state_dict(),
-                update=update,
-            )
-            if not os.path.exists(self.checkpoint_path):
-                os.makedirs(self.checkpoint_path)
-            if last:
-                self.accelerator.save(checkpoint, f"{self.checkpoint_path}/model_last.pt")
-                print(f"Saved last checkpoint at update {update}")
-            else:
-                if self.keep_last_n_checkpoints == 0:
-                    return
-                self.accelerator.save(checkpoint, f"{self.checkpoint_path}/model_{update}.pt")
-                if self.keep_last_n_checkpoints > 0:
-                    # Updated logic to exclude pretrained model from rotation
-                    checkpoints = [
-                        f
-                        for f in os.listdir(self.checkpoint_path)
-                        if f.startswith("model_")
-                        and not f.startswith("pretrained_")  # Exclude pretrained models
-                        and f.endswith(".pt")
-                        and f != "model_last.pt"
-                    ]
-                    checkpoints.sort(key=lambda x: int(x.split("_")[1].split(".")[0]))
-                    while len(checkpoints) > self.keep_last_n_checkpoints:
-                        oldest_checkpoint = checkpoints.pop(0)
-                        os.remove(os.path.join(self.checkpoint_path, oldest_checkpoint))
-                        print(f"Removed old checkpoint: {oldest_checkpoint}")
+        # self.accelerator.wait_for_everyone()
+        # if self.accelerator.is_main_process:
+        if not self.accelerator.is_main_process:
+            return
+        
+        checkpoint = dict(
+            model_state_dict=self.accelerator.unwrap_model(self.model).state_dict(),
+            optimizer_state_dict=self.optimizer.state_dict(),
+            ema_model_state_dict=self.ema_model.state_dict(),
+            scheduler_state_dict=self.scheduler.state_dict(),
+            update=update,
+        )
+        if not os.path.exists(self.checkpoint_path):
+            os.makedirs(self.checkpoint_path)
+        if last:
+            self.accelerator.save(checkpoint, f"{self.checkpoint_path}/model_last.pt")
+            print(f"Saved last checkpoint at update {update}")
+        else:
+            if self.keep_last_n_checkpoints == 0:
+                return
+            self.accelerator.save(checkpoint, f"{self.checkpoint_path}/model_{update}.pt")
+            print(f"Saved last checkpoint at update {update}")
+            if self.keep_last_n_checkpoints > 0:
+                # Updated logic to exclude pretrained model from rotation
+                checkpoints = [
+                    f
+                    for f in os.listdir(self.checkpoint_path)
+                    if f.startswith("model_")
+                    and not f.startswith("pretrained_")  # Exclude pretrained models
+                    and f.endswith(".pt")
+                    and f != "model_last.pt"
+                ]
+                checkpoints.sort(key=lambda x: int(x.split("_")[1].split(".")[0]))
+                while len(checkpoints) > self.keep_last_n_checkpoints:
+                    oldest_checkpoint = checkpoints.pop(0)
+                    os.remove(os.path.join(self.checkpoint_path, oldest_checkpoint))
+                    print(f"Removed old checkpoint: {oldest_checkpoint}")
 
     def load_checkpoint(self):
         if (
