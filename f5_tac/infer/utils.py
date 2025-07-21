@@ -20,9 +20,11 @@ import torchaudio
 import torch.nn.functional as F
 import pandas as pd
 
-from f5_tac.model.cfm import CFMWithTAC
-from f5_tac.model.reccfm import CFMWithTACRecon
-from f5_tac.model.backbones.dittac import DiTWithTAC
+# from f5_tac.model.cfm import CFMWithTAC
+# from f5_tac.model.reccfm import CFMWithTACRecon
+# from f5_tac.model.backbones.dittac import DiTWithTAC
+from f5_tac.model.dlcfm import CFMDD
+from f5_tac.model.backbones.doubledit import DoubleDiT
 from f5_tts.infer.utils_infer import load_vocoder
 from f5_tts.model.utils import get_tokenizer
 import logging
@@ -42,16 +44,15 @@ def load_model_and_vocoder(ckpt_path, vocab_file, device, lora=False):
     # dit_cfg = dict(
     #     dim=1024, depth=22, heads=16, ff_mult=2, text_dim=512, conv_layers=4,
     # )
-    transformer = DiTWithTAC(
+    transformer_backbone = DoubleDiT(
         **dit_cfg,
-        num_speakers=2,
         text_num_embeds=vocab_size,
         mel_dim=mel_spec_kwargs["n_mel_channels"]
     )
-    model = CFMWithTACRecon(
-        transformer=transformer,
+    model = CFMDD(
+        transformer=transformer_backbone,
         mel_spec_kwargs=mel_spec_kwargs,
-        vocab_char_map=vocab_char_map
+        vocab_char_map=vocab_char_map,
     )
     ckpt = torch.load(ckpt_path, map_location="cpu")
     if lora:
