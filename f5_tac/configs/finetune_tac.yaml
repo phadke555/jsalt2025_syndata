@@ -1,5 +1,5 @@
 # ----------------------- F5-TAC Finetune Config ----------------------- #
-exp_name: BASELINEDouble
+exp_name: BASELINESingle
 
 dataset_name: fisher_chunks_1K
 val_dataset_name: fisher_chunks_1KVAL
@@ -22,7 +22,7 @@ max_grad_norm: 1.0
 
 save_per_updates: 20000
 keep_last_n_checkpoints: 0
-last_per_updates: 10000
+last_per_updates: 2500
 val_per_updates: 20
 
 bnb_optimizer: false

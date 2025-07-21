@@ -144,7 +144,7 @@ class CFMDD(nn.Module):
 
         # Pad to max_duration for batching
         y0_A = F.pad(y0_A, (0, 0, 0, max_duration - dur_A), value=0.0)
-        y0_B = F.pad(y0_B, (0, 0, 0, 0, max_duration - dur_B), value=0.0)
+        y0_B = F.pad(y0_B, (0, 0, 0, max_duration - dur_B), value=0.0)
 
         # Timestep schedule
         if use_epss:

@@ -158,7 +158,7 @@ class CFMWithTACRecon(nn.Module):
                     time=t_cur,
                     mask=None,
                     cfg_infer=False,
-                    spk_mask=spk_mask,
+                    spk_mask=None,
                     cache=True,
                 )
                 return pred

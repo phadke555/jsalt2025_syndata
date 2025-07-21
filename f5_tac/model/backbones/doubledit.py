@@ -50,11 +50,17 @@ class DoubleDiT(DiT):
         tB = self.time_embed(time)
 
         if cfg_infer:  # pack cond & uncond forward: b n d -> 2b n d
-            x_cond_A = self.get_input_embed(x, cond_A, text_A, drop_audio_cond=False, drop_text=False, cache=cache)
-            x_uncond_A = self.get_input_embed(x, cond_A, text_A, drop_audio_cond=True, drop_text=True, cache=cache)
+            x_cond_A = self.get_input_embed(x_A, cond_A, text_A, drop_audio_cond=False, drop_text=False, cache=cache)
+            x_uncond_A = self.get_input_embed(x_A, cond_A, text_A, drop_audio_cond=True, drop_text=True, cache=cache)
             x_A = torch.cat((x_cond_A, x_uncond_A), dim=0)
-            t_A = torch.cat((t_A, t_A), dim=0)
+            tA = torch.cat((tA, tA), dim=0)
             mask_A = torch.cat((mask_A, mask_A), dim=0) if mask_A is not None else None
+
+            x_cond_B = self.get_input_embed(x_B, cond_B, text_B, drop_audio_cond=False, drop_text=False, cache=cache)
+            x_uncond_B = self.get_input_embed(x_B, cond_B, text_B, drop_audio_cond=True, drop_text=True, cache=cache)
+            x_B = torch.cat((x_cond_B, x_uncond_B), dim=0)
+            tB = torch.cat((tB, tB), dim=0)
+            mask_B = torch.cat((mask_B, mask_B), dim=0) if mask_B is not None else None
 
         else:
             x_A = self.get_input_embed(x_A, cond_A, text_A, drop_audio_cond, drop_text, cache)

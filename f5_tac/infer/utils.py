@@ -27,7 +27,9 @@ from f5_tts.infer.utils_infer import load_vocoder
 from f5_tts.model.utils import get_tokenizer
 import logging
 from peft import LoraConfig, PeftModel, LoraModel, get_peft_model
-from f5_tac.configs.model_kwargs import lora_configv1, lora_configv2
+from f5_tac.configs.model_kwargs import lora_configv1, lora_configv2, lora_configv3, mel_spec_kwargs, dit_cfg
+
+
 
 
 def load_model_and_vocoder(ckpt_path, vocab_file, device, lora=False):

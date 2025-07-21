@@ -152,7 +152,6 @@ def main():
     from peft import LoraConfig, PeftModel, LoraModel, get_peft_model
 
     model = get_peft_model(model, lora_configv2)
-    model.print_trainable_parameters()
 
     for name, param in model.named_parameters():
         if "tac" in name or "text_embed.text_embed" in name or "input_embed" in name:
@@ -160,6 +159,9 @@ def main():
             
     model.print_trainable_parameters()
     # ----------------------------------------------------------
+
+    num_devices = torch.cuda.device_count()
+    print(f"Number of available CUDA devices: {num_devices}")
 
 
     # --- 6. Instantiate Trainer ---
