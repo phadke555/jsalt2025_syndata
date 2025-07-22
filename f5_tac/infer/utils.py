@@ -176,7 +176,7 @@ def save_audio(wav, path, sr):
     torchaudio.save(path, wav, sr)
 
 
-def generate_sample(model, vocoder, wav_A, wav_B, text_A, text_B, device):
+def generate_sample(model, vocoder, wav_A, wav_B, text_A, text_B, gen_text_A=None, gen_text_B=None, device=None):
     """Generate TTS samples for two speakers."""
     mel_A = model.mel_spec(wav_A)
     mel_B = model.mel_spec(wav_B)
@@ -190,9 +190,9 @@ def generate_sample(model, vocoder, wav_A, wav_B, text_A, text_B, device):
     if not isinstance(text_B, str):
         text_B = ""
 
-    gen_text_A = text_A
+    gen_text_A = text_A if gen_text_A is None else gen_text_A
     # gen_text_A = ""
-    gen_text_B = text_B
+    gen_text_B = text_B if gen_text_B is None else gen_text_B
     # gen_text_B = ""
 
     full_texts = [
@@ -200,8 +200,8 @@ def generate_sample(model, vocoder, wav_A, wav_B, text_A, text_B, device):
         text_B + gen_text_B,   
     ]
 
-    ratio_A = len(text_A) / max(len(text_A), 1)
-    ratio_B = len(text_B) / max(len(text_B), 1)
+    ratio_A = len(gen_text_A) / max(len(text_A), 1)
+    ratio_B = len(gen_text_B) / max(len(text_B), 1)
 
     durations = [
         int(T_A * (1.1 + ratio_A)),
@@ -251,7 +251,7 @@ def process_row(row, model, vocoder, out_dir, device, transcript_file):
     mels_out, T_A, T_B = generate_sample(
         model, vocoder, wav_A, wav_B,
         ref_text_A, ref_text_B,
-        device
+        device=device
     )
 
     # Decode generated portion only

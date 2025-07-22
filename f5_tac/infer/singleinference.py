@@ -135,11 +135,11 @@ wav_A = prep_wav(ref_wav_A, sr)
 wav_B = prep_wav(ref_wav_B, sr)
 
 ref_text_A = speaker_A_text
-# gen_text_A = "What are you cooking? It smells amazing. Simple? It smells like a five-star restaurant in here. Sure, as long as I get to taste-test. No promises. Cheese is my weakness."
-gen_text_A = speaker_A_text
+gen_text_A = "What are you cooking? It smells amazing. Simple? It smells like a five-star restaurant in here. Sure, as long as I get to taste-test. No promises. Cheese is my weakness."
+# gen_text_A = speaker_A_text
 ref_text_B = speaker_B_text
-# gen_text_B = "Just a simple pasta with garlic and olive oil. Want to help? You can chop some basil for me. Deal. But no stealing the parmesan this time. Then I better hide the mozzarella too."
-gen_text_B = speaker_B_text
+gen_text_B = "Just a simple pasta with garlic and olive oil. Want to help? You can chop some basil for me. Deal. But no stealing the parmesan this time. Then I better hide the mozzarella too."
+# gen_text_B = speaker_B_text
 
 full_texts = [
   ref_text_A + gen_text_A,   
