@@ -28,5 +28,6 @@ diarize.slurm
 test_vadtext.ipynb
 unittest_ft.slurm
 unittest_sa.slurm
-TS-ASR-Whisper
+TS-ASR-Whisper/
 envs/tts_env
+envs/ts_asr_whisper
