@@ -20,9 +20,13 @@ import torchaudio
 import torch.nn.functional as F
 import pandas as pd
 
-from f5_tac.model.cfm import CFMWithTAC
+# from f5_tac.model.cfm import CFMWithTAC
 from f5_tac.model.reccfm import CFMWithTACRecon
 from f5_tac.model.backbones.dittac import DiTWithTAC
+from f5_tts.model.cfm import CFM
+from f5_tts.model.backbones.dit import DiT
+from f5_tac.model.dlcfm import CFMDD
+from f5_tac.model.backbones.doubledit import DoubleDiT
 from f5_tts.infer.utils_infer import load_vocoder
 from f5_tts.model.utils import get_tokenizer
 import logging
@@ -30,7 +34,95 @@ from peft import LoraConfig, PeftModel, LoraModel, get_peft_model
 from f5_tac.configs.model_kwargs import lora_configv1, lora_configv2, lora_configv3, mel_spec_kwargs, dit_cfg
 
 
+def load_base_model_and_vocoder(ckpt_path, vocab_file, device, lora=False):
+    vocab_char_map, vocab_size = get_tokenizer(vocab_file, "custom")
+    old_transformer = DiT(
+        **dit_cfg,
+        text_num_embeds=vocab_size,
+        mel_dim=mel_spec_kwargs["n_mel_channels"]
+    )
 
+    old_model = CFM(
+        transformer=old_transformer,
+        mel_spec_kwargs=mel_spec_kwargs,
+        vocab_char_map=vocab_char_map,
+    )
+
+    if ckpt_path.endswith(".safetensors"):
+        from safetensors.torch import load_file
+        ckpt = load_file(ckpt_path, device="cpu")
+    else:
+        ckpt = torch.load(ckpt_path, map_location="cpu")
+
+    state = (
+        ckpt.get("ema_model_state_dict", 
+        ckpt.get("model_state_dict", ckpt))
+    )
+    state = {k.replace("ema_model.", ""): v for k, v in state.items()}
+    incomplete = old_model.load_state_dict(state, strict = False)
+    print(incomplete)
+    transformer_backbone = DoubleDiT(
+        **dit_cfg,
+        text_num_embeds=vocab_size,
+        mel_dim=mel_spec_kwargs["n_mel_channels"]
+    )
+    print(transformer_backbone.time_embed.load_state_dict(old_transformer.time_embed.state_dict()))
+    print(transformer_backbone.text_embed.load_state_dict(old_transformer.text_embed.state_dict()))
+    print(transformer_backbone.input_embed.load_state_dict(old_transformer.input_embed.state_dict()))
+    print(transformer_backbone.rotary_embed.load_state_dict(old_transformer.rotary_embed.state_dict()))
+    print(transformer_backbone.norm_out.load_state_dict(old_transformer.norm_out.state_dict()))
+    print(transformer_backbone.proj_out.load_state_dict(old_transformer.proj_out.state_dict()))
+
+    for i, old_block in enumerate(old_transformer.transformer_blocks):
+        # block A
+        transformer_backbone.blocks_A[i].load_state_dict(old_block.state_dict(), strict=True)
+        # block B
+        transformer_backbone.blocks_B[i].load_state_dict(old_block.state_dict(), strict=True)
+
+    model = CFMDD(
+        transformer=transformer_backbone,
+        mel_spec_kwargs=mel_spec_kwargs,
+        vocab_char_map=vocab_char_map,
+    )
+    model.to(device).eval()
+
+    vocoder = load_vocoder().to(device)
+    return model, vocoder
+
+
+
+
+
+def load_doublemodel_and_vocoder(ckpt_path, vocab_file, device, lora=False):
+    """Load model and vocoder."""
+    vocab_char_map, vocab_size = get_tokenizer(vocab_file, "custom")
+    transformer_backbone = DoubleDiT(
+        **dit_cfg,
+        text_num_embeds=vocab_size,
+        mel_dim=mel_spec_kwargs["n_mel_channels"]
+    )
+    model = CFMDD(
+        transformer=transformer_backbone,
+        mel_spec_kwargs=mel_spec_kwargs,
+        vocab_char_map=vocab_char_map,
+    )
+    ckpt = torch.load(ckpt_path, map_location="cpu")
+    if lora:
+        model = get_peft_model(model, lora_configv2)
+
+    state = (
+        ckpt.get("ema_model_state_dict", 
+        ckpt.get("model_state_dict", ckpt))
+    )
+    state = {k.replace("ema_model.", ""): v for k, v in state.items()}
+
+    incomplete = model.load_state_dict(state, strict=False)
+    print(incomplete)
+
+    model.to(device).eval()
+
+    vocoder = load_vocoder().to(device)
+    return model, vocoder
 
 def load_model_and_vocoder(ckpt_path, vocab_file, device, lora=False):
     """Load model and vocoder."""
@@ -62,7 +154,6 @@ def load_model_and_vocoder(ckpt_path, vocab_file, device, lora=False):
 
     vocoder = load_vocoder().to(device)
     return model, vocoder
-
 
 def prep_wav(wav, orig_sr, target_sr, device):
     """Make wav mono, resample, move to device."""
