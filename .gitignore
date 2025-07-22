@@ -3,6 +3,8 @@ finetune_f5tts.slurm
 inference_f5tts.slurm
 preparedata.ipynb
 envs/conda_env
+envs/ts_asr_whisper
+envs/tts_env
 envs/F5-TTS
 logs/
 finetune/runs_log.md
@@ -28,3 +30,4 @@ diarize.slurm
 test_vadtext.ipynb
 unittest_ft.slurm
 unittest_sa.slurm
+TS-ASR-Whisper/

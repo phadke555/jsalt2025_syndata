@@ -20,10 +20,10 @@ conda activate "${ENV_PATH}"
 echo "→ Installing FFmpeg (for audio processing)…"
 conda install -y -c conda-forge ffmpeg
 
-pip install datasets[audio] soundfile pyyaml
+pip install datasets[audio] soundfile pyyaml lhotse peft==0.16.0 jiwer<4.0.0
 
 echo "→ Cloning F5-TTS repository…"
-git clone https://github.com/SWivid/F5-TTS.git
+# git clone https://github.com/SWivid/F5-TTS.git
 cd F5-TTS
 
 echo "→ Installing Python dependencies…"
