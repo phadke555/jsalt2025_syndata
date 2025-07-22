@@ -1,7 +1,7 @@
 # batch_infer.py
 import argparse
 import torch
-from f5_tac.infer.utils import load_base_model_and_vocoder, load_model_and_vocoder, process_all
+from f5_tac.infer.utils import load_base_model_and_vocoder, load_doublemodel_and_vocoder, load_model_and_vocoder, process_all
 import os
 
 def main():
@@ -16,7 +16,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Load model & vocoder
-    model, vocoder = load_model_and_vocoder(args.ckpt_path, args.vocab_file, device, args.lora)
+    model, vocoder = load_doublemodel_and_vocoder(args.ckpt_path, args.vocab_file, device, args.lora)
 
     # Process all metadata rows
     metadata_path = os.path.join(args.data_root, "metadata.csv")

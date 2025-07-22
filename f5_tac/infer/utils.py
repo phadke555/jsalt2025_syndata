@@ -21,8 +21,8 @@ import torch.nn.functional as F
 import pandas as pd
 
 # from f5_tac.model.cfm import CFMWithTAC
-# from f5_tac.model.reccfm import CFMWithTACRecon
-# from f5_tac.model.backbones.dittac import DiTWithTAC
+from f5_tac.model.reccfm import CFMWithTACRecon
+from f5_tac.model.backbones.dittac import DiTWithTAC
 from f5_tts.model.cfm import CFM
 from f5_tts.model.backbones.dit import DiT
 from f5_tac.model.dlcfm import CFMDD
@@ -91,7 +91,9 @@ def load_base_model_and_vocoder(ckpt_path, vocab_file, device, lora=False):
 
 
 
-def load_model_and_vocoder(ckpt_path, vocab_file, device, lora=False):
+
+
+def load_doublemodel_and_vocoder(ckpt_path, vocab_file, device, lora=False):
     """Load model and vocoder."""
     vocab_char_map, vocab_size = get_tokenizer(vocab_file, "custom")
     transformer_backbone = DoubleDiT(
@@ -107,13 +109,51 @@ def load_model_and_vocoder(ckpt_path, vocab_file, device, lora=False):
     ckpt = torch.load(ckpt_path, map_location="cpu")
     if lora:
         model = get_peft_model(model, lora_configv2)
-    model.load_state_dict(ckpt["model_state_dict"])
+
+    state = (
+        ckpt.get("ema_model_state_dict", 
+        ckpt.get("model_state_dict", ckpt))
+    )
+    state = {k.replace("ema_model.", ""): v for k, v in state.items()}
+
+    incomplete = model.load_state_dict(state, strict=False)
+    print(incomplete)
 
     model.to(device).eval()
 
     vocoder = load_vocoder().to(device)
     return model, vocoder
 
+def load_model_and_vocoder(ckpt_path, vocab_file, device, lora=False):
+    """Load model and vocoder."""
+    vocab_char_map, vocab_size = get_tokenizer(vocab_file, "custom")
+    # mel_spec_kwargs = dict(
+    #     n_fft=1024, hop_length=256, win_length=1024,
+    #     n_mel_channels=100, target_sample_rate=24000, mel_spec_type="vocos",
+    # )
+    # dit_cfg = dict(
+    #     dim=1024, depth=22, heads=16, ff_mult=2, text_dim=512, conv_layers=4,
+    # )
+    transformer = DiTWithTAC(
+        **dit_cfg,
+        num_speakers=2,
+        text_num_embeds=vocab_size,
+        mel_dim=mel_spec_kwargs["n_mel_channels"]
+    )
+    model = CFMWithTACRecon(
+        transformer=transformer,
+        mel_spec_kwargs=mel_spec_kwargs,
+        vocab_char_map=vocab_char_map
+    )
+    ckpt = torch.load(ckpt_path, map_location="cpu")
+    if lora:
+        model = get_peft_model(model, lora_configv2)
+    model.load_state_dict(ckpt["model_state_dict"])
+
+    model.to(device).eval()
+
+    vocoder = load_vocoder().to(device)
+    return model, vocoder
 
 def prep_wav(wav, orig_sr, target_sr, device):
     """Make wav mono, resample, move to device."""
