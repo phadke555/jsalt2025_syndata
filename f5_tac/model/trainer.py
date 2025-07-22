@@ -423,7 +423,7 @@ class Trainer:
                         total_loss = loss_A + loss_B + self.mix_loss_lambda * mix_loss
                         self.accelerator.backward(total_loss)
                     else:
-                        loss_A, loss_B, cond_A, pred_A, cond_B, pred_B = self.model(
+                        loss_A, loss_B, mix_loss, cond_A, pred_A, cond_B, pred_B = self.model(
                             mel_A=mel_A,
                             text_A=text_A,
                             mel_lengths_A=mel_lengths_A,

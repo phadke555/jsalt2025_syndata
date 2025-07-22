@@ -51,7 +51,7 @@ class TAC(torch.nn.Module):
         self,
         in_channels,
         expansion_f=3,
-        dropout=0.0,
+        dropout=0.1,
         norm_type="LayerNorm",
         activation="relu",
         init_scale=0.01,

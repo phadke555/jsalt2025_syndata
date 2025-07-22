@@ -17,10 +17,12 @@ from f5_tts.model.utils import (
     exists,
     get_epss_timesteps,
     lens_to_mask,
-    list_str_to_idx,
+    # list_str_to_idx,
     list_str_to_tensor,
     mask_from_frac_lengths,
 )
+
+from f5_tac.model.utils import list_str_to_idx
 
 class CFMDD(nn.Module):
     """
@@ -105,7 +107,7 @@ class CFMDD(nn.Module):
         if not exists(lens):
             lens = torch.full((batch,), cond_seq_len, device=device, dtype=torch.long)
 
-        text_A, text_B = texts[0:1], texts[1:2]  
+        text_A, text_B = texts[0:1], texts[1:2]
         # Convert text inputs
         if isinstance(text_A, list):
             if exists(self.vocab_char_map):
@@ -287,9 +289,9 @@ class CFMDD(nn.Module):
 
         # --- Call the Double DiT transformer ---
         pred_A, pred_B = self.transformer(
-            phi_A, cond_A, text_A, mask_A,
-            phi_B, cond_B, text_B, mask_B,
-            time,
+            x_A=phi_A, cond_A=cond_A, text_A=text_A, mask_A=mask_A,
+            x_B=phi_B, cond_B=cond_B, text_B=text_B, mask_B=mask_B,
+            time=time,
             drop_audio_cond=drop_audio_cond,
             drop_text=drop_text
         )
