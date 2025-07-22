@@ -8,8 +8,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from torch.nn.utils.rnn import pad_sequence
-# from torchdiffeq import odeint
-from torchdiffeq import odeint_adjoint as odeint
+from torchdiffeq import odeint
+# from torchdiffeq import odeint_adjoint as odeint
 
 from f5_tts.model.modules import MelSpec
 from f5_tts.model.utils import (
@@ -105,21 +105,23 @@ class CFMDD(nn.Module):
         if not exists(lens):
             lens = torch.full((batch,), cond_seq_len, device=device, dtype=torch.long)
 
+        text_A, text_B = texts[0:1], texts[1:2]  
         # Convert text inputs
-        if isinstance(texts, list):
+        if isinstance(text_A, list):
             if exists(self.vocab_char_map):
-                texts = list_str_to_idx(texts, self.vocab_char_map).to(device)
+                text_A = list_str_to_idx(text_A, self.vocab_char_map).to(device)
+                text_B = list_str_to_idx(text_B, self.vocab_char_map).to(device)
             else:
                 texts = list_str_to_tensor(texts).to(device)
-            assert texts.shape[0] == batch  # Should be 2
+            # assert texts.shape[0] == batch  # Should be 2
 
         # Duration logic
         if isinstance(durations, int):
             durations = torch.full((batch,), durations, device=device, dtype=torch.long)
         durations = torch.tensor(durations, device=device, dtype=torch.long)
-        durations = torch.maximum(
-            torch.maximum((texts != -1).sum(dim=-1), lens) + 1, durations
-        ).clamp(max=max_duration)
+        # durations = torch.maximum(
+        #     torch.maximum((texts != -1).sum(dim=-1), lens) + 1, durations
+        # ).clamp(max=max_duration)
         max_duration = durations.amax()
 
         # Build masks and step_cond per speaker
@@ -134,7 +136,6 @@ class CFMDD(nn.Module):
 
         # Split inputs per speaker
         cond_A, cond_B = step_cond[0:1], step_cond[1:2]  # [1, T, D]
-        text_A, text_B = texts[0:1], texts[1:2]          # [1, L]
         mask_A, mask_B = cond_mask[0:1], cond_mask[1:2]  # [1, T, 1]
         dur_A, dur_B = durations[0], durations[1]       # scalars
 
@@ -174,9 +175,9 @@ class CFMDD(nn.Module):
         torch.manual_seed(seed) if seed is not None else None
         y0_list_A = []
         y0_list_B = []
-        y0_list_A.append(torch.randn(dur_A, self.num_channels, device=device, dtype=step_cond.dtype))
+        y0_list_A.append(torch.randn(max_duration, self.num_channels, device=device, dtype=step_cond.dtype))
 
-        y0_list_B.append(torch.randn(dur_B, self.num_channels, device=device, dtype=step_cond.dtype))
+        y0_list_B.append(torch.randn(max_duration, self.num_channels, device=device, dtype=step_cond.dtype))
 
         y0_A = pad_sequence(y0_list_A, padding_value=0.0, batch_first=True)  # [1, T_A, D]
         y0_B = pad_sequence(y0_list_B, padding_value=0.0, batch_first=True)  # [1, T_B, D]
@@ -197,7 +198,7 @@ class CFMDD(nn.Module):
         y0 = torch.cat([y0_A, y0_B], dim=0)  # [2, T_out, D]
 
         # Integrate ODE
-        trajectory = odeint(fn, y0, t, adjoint_params=(), **self.odeint_kwargs)
+        trajectory = odeint(fn, y0, t, **self.odeint_kwargs)
         self.transformer.clear_cache()
 
         # Extract final and restore prompt frames
@@ -252,8 +253,6 @@ class CFMDD(nn.Module):
                 text_A = text_A.to(device)
             if isinstance(text_B, torch.Tensor):
                 text_B = text_B.to(device)
-        print(text_A)
-        print(text_B)
         
         # --- Flow Matching Logic (performed independently) ---
         x1_A, x0_A = mel_A, torch.randn_like(mel_A)
