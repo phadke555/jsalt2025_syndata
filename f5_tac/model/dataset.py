@@ -77,6 +77,7 @@ class FisherDataset(Dataset):
             mel_B = self._process_audio(item["speaker_B_wav"])
 
         return {
+            "clip_id": item["recording_id"],
             "mel_A": mel_A,
             "text_A": item["speaker_A_text"],
             "mel_B": mel_B,
@@ -158,7 +159,10 @@ def conversation_collate_fn(batch: list[dict]) -> dict:
     texts_B = [item["text_B"] for item in batch]
     text_lengths_B = torch.LongTensor([len(text) for text in texts_B])
 
+    clip_ids = [item["clip_id"] for item in batch]
+
     return {
+        "clip_ids": clip_ids,
         "mel_A": final_mel_specs_A,
         "mel_lengths_A": mel_lengths_A,
         "text_A": texts_A,
