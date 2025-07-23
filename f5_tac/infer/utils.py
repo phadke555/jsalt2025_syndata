@@ -223,6 +223,49 @@ def generate_sample(model, vocoder, wav_A, wav_B, text_A, text_B, gen_text_A=Non
 
     return mels_out, T_A, T_B
 
+def new_generate_sample(model, vocoder, wav_A, wav_B, text_A, text_B, gen_text_A=None, gen_text_B=None, device=None):
+    """Generate TTS samples for two speakers."""
+    mel_A = model.mel_spec(wav_A)
+    mel_B = model.mel_spec(wav_B)
+
+    T_A = mel_A.size(2)
+    T_B = mel_B.size(2)
+
+    if not isinstance(text_A, str):
+        text_A = ""
+    if not isinstance(text_B, str):
+        text_B = ""
+
+    gen_text_A = text_A if gen_text_A is None else gen_text_A
+    # gen_text_A = ""
+    gen_text_B = text_B if gen_text_B is None else gen_text_B
+    # gen_text_B = ""
+
+    text_A = [text_A + gen_text_A ]
+    text_B = [text_B + gen_text_B]
+
+    ratio_A = len(gen_text_A) / max(len(text_A), 1)
+    ratio_B = len(gen_text_B) / max(len(text_B), 1)
+    max_ratio = max(ratio_A, ratio_B)
+
+    duration = int(T_A * (1.1 + max_ratio))
+
+    out_A, _, out_B, _ = model.new_sample_joint(
+        cond_A=mel_A,
+        text_A=text_A,
+        cond_B=mel_B,
+        text_B=text_B,
+        duration=duration,
+        vocoder=vocoder,
+        steps=32,
+        cfg_strength=1.5,
+        sway_sampling_coef=-1.0,
+        seed=42,
+        max_duration=4096,
+        use_epss=True
+    )
+
+    return out_A, out_B, T_A, T_B
 
 def process_row(row, model, vocoder, out_dir, device, transcript_file):
     """Process one metadata row: generate & save outputs."""
@@ -285,7 +328,66 @@ def process_row(row, model, vocoder, out_dir, device, transcript_file):
     out_wav_path = os.path.join(out_dir, f"{clip_id}_generated.wav")
     save_audio(mono, out_wav_path, sr)
 
+def new_process_row(row, model, vocoder, out_dir, device, transcript_file):
+    """Process one metadata row: generate & save outputs."""
 
+    sr = 24000  # target sample rate
+
+    # --- Extract identifiers from wav path ---
+    # e.g. /path/to/fe_03_00001_0000_A.wav → fe_03_00001_0000
+    base_name_A = os.path.basename(row["speaker_A_wav"])
+
+    # Take common prefix (before _A.wav or _B.wav)
+    clip_id = base_name_A.replace("_A.wav", "")
+
+    # --- Load & prepare reference wavs ---
+    ref_wav_A, orig_sr_A = torchaudio.load(row["speaker_A_wav"])
+    ref_wav_B, orig_sr_B = torchaudio.load(row["speaker_B_wav"])
+
+    wav_A = prep_wav(ref_wav_A, orig_sr_A, sr, device)
+    wav_B = prep_wav(ref_wav_B, orig_sr_B, sr, device)
+
+    # Handle potential missing text
+    ref_text_A = row["speaker_A_text"]
+    ref_text_B = row["speaker_B_text"]
+
+    # Generate
+    out_A, out_B, T_A, T_B = new_generate_sample(
+        model, vocoder, wav_A, wav_B,
+        ref_text_A, ref_text_B,
+        device=device
+    )
+
+    # Decode generated portion only
+    gen_mel_A = out_A[:, T_A:, :]
+    gen_mel_B = out_B[:, T_B:, :]
+
+    gen_mel_A = gen_mel_A.permute(0, 2, 1)
+    if gen_mel_A.numel() == 0:
+        # produce an “empty” waveform: shape [1, 0]
+        wav_A = torch.zeros(1, 0, device="cpu")
+    else:
+        wav_A = vocoder.decode(gen_mel_A).detach().cpu()
+
+    gen_mel_B = gen_mel_B.permute(0, 2, 1)
+    if gen_mel_B.numel() == 0:
+        wav_B = torch.zeros(1, 0, device="cpu")
+    else:
+        wav_B = vocoder.decode(gen_mel_B).detach().cpu()
+
+    max_len = max(wav_A.shape[-1], wav_B.shape[-1])
+    A_pad = F.pad(wav_A, (0, max_len - wav_A.shape[-1]))
+    B_pad = F.pad(wav_B, (0, max_len - wav_B.shape[-1]))
+
+    mono = A_pad + B_pad
+
+    # gen_waveforms = vocoder.decode(
+    #     torch.cat([gen_mel_A, gen_mel_B], dim=0).permute(0, 2, 1)
+    # ).detach().cpu()
+
+    # --- Save combined generated audio ---
+    out_wav_path = os.path.join(out_dir, f"{clip_id}_generated.wav")
+    save_audio(mono, out_wav_path, sr)
 
 
 def process_all(metadata_path, out_dir, model, vocoder, device):
