@@ -225,11 +225,11 @@ def generate_sample(model, vocoder, wav_A, wav_B, text_A, text_B, gen_text_A=Non
 
 def new_generate_sample(model, vocoder, wav_A, wav_B, text_A, text_B, gen_text_A=None, gen_text_B=None, device=None):
     """Generate TTS samples for two speakers."""
-    mel_A = model.mel_spec(wav_A)
-    mel_B = model.mel_spec(wav_B)
+    mel_A = model.mel_spec(wav_A).permute(0, 2, 1)
+    mel_B = model.mel_spec(wav_B).permute(0, 2, 1)
 
-    T_A = mel_A.size(2)
-    T_B = mel_B.size(2)
+    T_A = mel_A.size(1)
+    T_B = mel_B.size(1)
 
     if not isinstance(text_A, str):
         text_A = ""
@@ -242,7 +242,9 @@ def new_generate_sample(model, vocoder, wav_A, wav_B, text_A, text_B, gen_text_A
     # gen_text_B = ""
 
     text_A = [text_A + gen_text_A ]
+    # print("Text A", text_A)
     text_B = [text_B + gen_text_B]
+    # print("Text B", text_B)
 
     ratio_A = len(gen_text_A) / max(len(text_A), 1)
     ratio_B = len(gen_text_B) / max(len(text_B), 1)
@@ -398,7 +400,7 @@ def process_all(metadata_path, out_dir, model, vocoder, device):
     for idx, row in df.iterrows():
         conversation_id = f"{row['recording_id']}_{idx}"
         print(f"Processing {conversation_id}...")
-        process_row(row, model, vocoder, out_dir, device, conversation_id)
+        new_process_row(row, model, vocoder, out_dir, device, conversation_id)
 
 
 import os
