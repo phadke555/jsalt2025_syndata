@@ -130,6 +130,14 @@ def main():
     # 3) Strip an ‘ema_model.’ prefix if it sneaked in
     state = {k.replace("ema_model.", ""): v for k, v in state.items()}
 
+    old_emb = state["transformer.text_embed.text_embed.weight"]  # [V, D]
+    if old_emb.shape[0] < vocab_size + 1:
+        rand_row = torch.randn(1, old_emb.shape[1]) * 0.02                       # small init
+        state["transformer.text_embed.text_embed.weight"] = torch.cat(
+            [old_emb, rand_row], dim=0
+        )
+        print(f"Vocab Embedding Matrix Updated to Size = {vocab_size + 1}")
+
 
     # 5) Finally load with strict=False to pick up whatever lines up
     incompatible = model.load_state_dict(state, strict=False)
@@ -182,7 +190,7 @@ def main():
         mix_loss_lambda=1.0,
         logger=args.logger,
         recon_loss = True,
-        wandb_project=f"finetune_f5_2speaker",
+        wandb_project=f"f5_tac_2spk",
         wandb_run_name=args.exp_name,
         log_samples=args.log_samples,
         bnb_optimizer=True,
