@@ -8,7 +8,7 @@ from pathlib import Path
 import os
 import torch
 import torchaudio
-from lhotse import SupervisionSet
+from lhotse import SupervisionSet, RecordingSet
 from f5_tts.api import F5TTS
 
 def load_utterances(supervisions_manifest: str, session_id: str):
@@ -79,15 +79,24 @@ def concatenate_chunks(output_dir, prefix="fe_03_00001"):
 
 r_man = "/work/users/r/p/rphadke/JSALT/fisher/lhotse_manifests/fixed/recordings.jsonl.gz"
 s_man = "/work/users/r/p/rphadke/JSALT/fisher/lhotse_manifests/fixed/supervisions.jsonl.gz"
-recording_ids = ["fe_03_00001", "fe_03_00002", "fe_03_00003", "fe_03_00004"]
+
+recordings = RecordingSet.from_jsonl(r_man)
+unique_conv_ids = []
+max_conversations = 500
+for rec in recordings.recordings:
+    conv_id = rec.id.rsplit("-", 1)[0]
+    if conv_id not in unique_conv_ids:
+        unique_conv_ids.append(conv_id)
+    if max_conversations and len(unique_conv_ids) >= max_conversations:
+        break
+
 
 ckpt_file = "/work/users/r/p/rphadke/JSALT/ckpts/pretrained_model_1250000.safetensors"
 vocab_file = "/work/users/r/p/rphadke/JSALT/vocab_files/vocab_v1.txt"
 output_dir = "/work/users/r/p/rphadke/JSALT/eval/ablation_sequential_uttwise"
 
 
-
-for prefix in recording_ids:
+for prefix in unique_conv_ids:
     utterances = load_utterances(s_man, prefix)
     print(f"Loaded {len(utterances)} utterances for session {prefix}")
     generate_each_utterance(utterances, ckpt_file, vocab_file, output_dir)
