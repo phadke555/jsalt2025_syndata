@@ -54,7 +54,7 @@ def load_model_and_vocoder(ckpt_path, vocab_file, lora=False):
     ckpt = torch.load(ckpt_path, map_location="cpu")
     state = ckpt["ema_model_state_dict"]
     if lora:
-        model = get_peft_model(model, lora_configv3)
+        model = get_peft_model(model, lora_configv2)
 
     state = {k.replace("ema_model.", ""): v for k, v in state.items()}
     incomplete = model.load_state_dict(state, strict=False)
@@ -219,6 +219,7 @@ def process_all(metadata_path, out_dir, model, vocoder, devices):
     os.makedirs(out_dir, exist_ok=True)
 
     df = pd.read_csv(metadata_path)
+    df = df[:100]
     df_chunks = split_dataframe(df, len(devices))
     # Create a process for each GPU
     processes = []
