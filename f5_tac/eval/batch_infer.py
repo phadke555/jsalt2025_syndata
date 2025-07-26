@@ -16,7 +16,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Load model & vocoder
-    model, vocoder = load_doublemodel_and_vocoder(args.ckpt_path, args.vocab_file, device, args.lora)
+    model, vocoder = load_model_and_vocoder(args.ckpt_path, args.vocab_file, device, args.lora)
 
     # Process all metadata rows
     metadata_path = os.path.join(args.data_root, "metadata.csv")

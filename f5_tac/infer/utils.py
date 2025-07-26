@@ -226,6 +226,12 @@ def generate_sample(model, vocoder, wav_A, wav_B, text_A, text_B, gen_text_A=Non
 
 def process_row(row, model, vocoder, out_dir, device, transcript_file):
     """Process one metadata row: generate & save outputs."""
+    gen_chunks_dir = os.path.join(out_dir, "generated_chunks")
+    A_chunks_dir = os.path.join(out_dir, "A_generated_chunks")
+    B_chunks_dir = os.path.join(out_dir, "B_generated_chunks")
+    os.makedirs(gen_chunks_dir, exist_ok=True)
+    os.makedirs(A_chunks_dir, exist_ok=True)
+    os.makedirs(B_chunks_dir, exist_ok=True)
 
     sr = 24000  # target sample rate
 
@@ -275,6 +281,12 @@ def process_row(row, model, vocoder, out_dir, device, transcript_file):
     A_pad = F.pad(wav_A, (0, max_len - wav_A.shape[-1]))
     B_pad = F.pad(wav_B, (0, max_len - wav_B.shape[-1]))
 
+    A_wav_path = out_wav_path = os.path.join(A_chunks_dir, f"{clip_id}_generated.wav")
+    save_audio(A_pad, A_wav_path, sr)
+
+    B_wav_path = out_wav_path = os.path.join(B_chunks_dir, f"{clip_id}_generated.wav")
+    save_audio(B_pad, B_wav_path, sr)
+
     mono = A_pad + B_pad
 
     # gen_waveforms = vocoder.decode(
@@ -282,7 +294,7 @@ def process_row(row, model, vocoder, out_dir, device, transcript_file):
     # ).detach().cpu()
 
     # --- Save combined generated audio ---
-    out_wav_path = os.path.join(out_dir, f"{clip_id}_generated.wav")
+    out_wav_path = os.path.join(gen_chunks_dir, f"{clip_id}_generated.wav")
     save_audio(mono, out_wav_path, sr)
 
 
