@@ -110,7 +110,7 @@ def main():
         cid = rec.id.rsplit("-",1)[0]
         if cid not in prefixes:
             prefixes.append(cid)
-        if len(prefixes) >= 100:
+        if len(prefixes) >= 500:
             break
 
     ckpt_file = "/work/users/r/p/rphadke/JSALT/ckpts/pretrained_model_1250000.safetensors"

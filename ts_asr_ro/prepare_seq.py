@@ -18,16 +18,6 @@ old_supervisions = SupervisionSet.from_file(old_supervisions_path)
 # Sort by ID to match order (e.g., fe_03_00001-000.wav, -001.wav, etc.)
 old_segments = sorted(old_supervisions, key=lambda s: s.id)
 
-r_man = "/work/users/r/p/rphadke/JSALT/fisher/lhotse_manifests/fixed/recordings.jsonl.gz"
-recordings = RecordingSet.from_jsonl(r_man)
-recording_ids = []
-max_conversations = 100
-for rec in recordings.recordings:
-    conv_id = rec.id.rsplit("-", 1)[0]
-    if conv_id not in recording_ids:
-        recording_ids.append(conv_id)
-    if max_conversations and len(recording_ids) >= max_conversations:
-        break
 
 # Helper to get duration from wav
 def get_duration(wav_path):
@@ -37,16 +27,18 @@ def get_duration(wav_path):
 new_segments = []
 start_time = 0.0
 
+recording_cutoff = "fe_03_00501"  # Stop after this
 
 for old_segment in old_segments:
     utt_id = old_segment.id
     speaker = old_segment.speaker
     text = old_segment.text
     recording_id = old_segment.recording_id  # Or you can map it to a conversation ID instead
+    recording_id = recording_id.split("-")[0]
 
     # Early stopping condition
-    if recording_id not in recording_ids:
-        print(f"Stopping early: reached recording ID {recording_id} beyond cutoff.")
+    if recording_id >= recording_cutoff:
+        print(f"Stopping early: reached recording ID {recording_id} beyond cutoff {recording_cutoff}.")
         break
 
     print(f"Processing {utt_id}")
@@ -71,15 +63,26 @@ for old_segment in old_segments:
     new_segments.append(segment)
     start_time += duration  # + optional_pause if you want padding
 
+r_man = "/work/users/r/p/rphadke/JSALT/fisher/lhotse_manifests/fixed/recordings.jsonl.gz"
+recordings = RecordingSet.from_jsonl(r_man)
+recording_ids = []
+max_conversations = 5000
+for rec in recordings.recordings:
+    conv_id = rec.id.rsplit("-", 1)[0]
+    if conv_id not in recording_ids:
+        recording_ids.append(conv_id)
+    if max_conversations and len(recording_ids) >= max_conversations:
+        break
 
+print(len(recording_ids))
 
 new_recordings = []
 for rid in recording_ids:
-    path = f"/work/users/r/p/rphadke/JSALT/eval/ablation_sequential/concatenated_generations/{rid}.wav"
+    path = f"/work/users/r/p/rphadke/JSALT/eval/ablation_sequential_uttwise/concatenated_generations/{rid}.wav"
     recording = Recording.from_file(str(path), recording_id=rid)
     new_recordings.append(recording)
 
-# Create and save SupervisionSet
+# # Create and save SupervisionSet
 new_supervisions = SupervisionSet.from_segments(new_segments)
 new_supervisions.to_file(output_supervisions_path)
 
