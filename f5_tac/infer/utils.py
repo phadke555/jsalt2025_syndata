@@ -213,6 +213,15 @@ def split_dataframe(df, num_chunks):
     """Split DataFrame into approximately equal-sized chunks"""
     return [df.iloc[i::num_chunks] for i in range(num_chunks)]
 
+def process_rows_on_device(df_chunk, model, vocoder, out_dir, device, rank):
+    """Process subset of rows on a specific GPU."""
+    model = model.to(device)
+    vocoder = vocoder.to(device)
+    for idx, row in df_chunk.iterrows():
+        conversation_id = f"{row['recording_id']}_{idx}"
+        print(f"[GPU {rank}] Processing {conversation_id}...")
+        process_row(row, model, vocoder, out_dir, device, conversation_id)
+
 import multiprocessing
 def process_all(metadata_path, out_dir, model, vocoder, devices):
     """Loop over all metadata rows and process them."""
@@ -234,14 +243,6 @@ def process_all(metadata_path, out_dir, model, vocoder, devices):
     for p in processes:
         p.join()
 
-def process_rows_on_device(df_chunk, model, vocoder, out_dir, device, rank):
-    """Process subset of rows on a specific GPU."""
-    model = model.to(device)
-    vocoder = vocoder.to(device)
-    for idx, row in df_chunk.iterrows():
-        conversation_id = f"{row['recording_id']}_{idx}"
-        print(f"[GPU {rank}] Processing {conversation_id}...")
-        process_row(row, model, vocoder, out_dir, device, conversation_id)
 
 import os
 import argparse
