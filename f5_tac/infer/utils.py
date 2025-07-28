@@ -340,9 +340,11 @@ def process_directory(input_dir, output_dir, mode=None):
         for conv_id, files in groups.items():
             print(f"Combining {len(files)} generated clips for {conv_id}...")
             combined_audio, sr = concatenate_clips(files)
+            new_freq=16000
+            combined_audio = torchaudio.transforms.Resample(orig_freq=sr, new_freq=new_freq)(combined_audio)
 
-            output_path = os.path.join(output_dir, f"{conv_id}_full_generated.wav")
-            torchaudio.save(output_path, combined_audio, sr)
+            output_path = os.path.join(output_dir, f"{conv_id}.wav")
+            torchaudio.save(output_path, combined_audio, new_freq)
             print(f"Saved combined file: {output_path}")
 
     elif mode == "original":
