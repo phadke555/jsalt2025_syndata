@@ -28,7 +28,7 @@ for rec in old_recordings:
 # Split unique conversation IDs into train/dev/test
 unique_ids = list(set([rec_id.rsplit("-", 1)[0] for rec_id in recording_map.keys()]))
 unique_ids.sort()
-unique_ids = unique_ids[:100]
+unique_ids = unique_ids[:1000]
 # random.seed(42)  # For reproducibility
 # random.shuffle(unique_ids)
 

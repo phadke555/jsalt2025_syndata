@@ -24,8 +24,10 @@ def get_duration(wav_path):
     info = torchaudio.info(wav_path)
     return info.num_frames / info.sample_rate
 
+
 new_segments = []
 start_time = 0.0
+prev_rec_id = None
 
 recording_cutoff = "fe_03_00501"  # Stop after this
 
@@ -35,6 +37,11 @@ for old_segment in old_segments:
     text = old_segment.text
     recording_id = old_segment.recording_id  # Or you can map it to a conversation ID instead
     recording_id = recording_id.split("-")[0]
+
+    if recording_id != prev_rec_id:
+        start_time = 0.0
+        prev_rec_id = recording_id
+
 
     # Early stopping condition
     if recording_id >= recording_cutoff:
@@ -66,7 +73,7 @@ for old_segment in old_segments:
 r_man = "/work/users/r/p/rphadke/JSALT/fisher/lhotse_manifests/fixed/recordings.jsonl.gz"
 recordings = RecordingSet.from_jsonl(r_man)
 recording_ids = []
-max_conversations = 5000
+max_conversations = 500
 for rec in recordings.recordings:
     conv_id = rec.id.rsplit("-", 1)[0]
     if conv_id not in recording_ids:
