@@ -208,13 +208,18 @@ def process_row(row, model, vocoder, out_dir, device, transcript_file):
     out_wav_path = os.path.join(mono_path, f"{clip_id}_generated.wav")
     save_audio(mono, out_wav_path, sr)
 
+    import gc
+    del mels_out, gen_mel_A, gen_mel_B, wav_A, wav_B, A_pad, B_pad, mono
+    gc.collect()
+    torch.cuda.empty_cache()
 
 def split_dataframe(df, num_chunks):
     """Split DataFrame into approximately equal-sized chunks"""
     return [df.iloc[i::num_chunks] for i in range(num_chunks)]
 
-def process_rows_on_device(df_chunk, model, vocoder, out_dir, device, rank):
+def process_rows_on_device(df_chunk, ckpt_path, vocab_file, use_lora, out_dir, device, rank):
     """Process subset of rows on a specific GPU."""
+    model, vocoder = load_model_and_vocoder(ckpt_path, vocab_file, use_lora)
     model = model.to(device)
     vocoder = vocoder.to(device)
     for idx, row in df_chunk.iterrows():
@@ -222,20 +227,25 @@ def process_rows_on_device(df_chunk, model, vocoder, out_dir, device, rank):
         print(f"[GPU {rank}] Processing {conversation_id}...")
         process_row(row, model, vocoder, out_dir, device, conversation_id)
 
+    del model, vocoder
+    torch.cuda.empty_cache()
+
 import multiprocessing
-def process_all(metadata_path, out_dir, model, vocoder, devices):
+def process_all(metadata_path, out_dir, ckpt_path, vocab_file, use_lora, devices):
     """Loop over all metadata rows and process them."""
     os.makedirs(out_dir, exist_ok=True)
 
     df = pd.read_csv(metadata_path)
-    df = df[:100]
+    # up to conversation 500
+    df = df[500:16867]
+    print(f"Processing Conversations {df.shape}")
     df_chunks = split_dataframe(df, len(devices))
     # Create a process for each GPU
     processes = []
     for i, (device, df_chunk) in enumerate(zip(devices, df_chunks)):
         p = multiprocessing.Process(
             target=process_rows_on_device,
-            args=(df_chunk, model, vocoder, out_dir, device, i)
+            args=(df_chunk, ckpt_path, vocab_file, use_lora, out_dir, device, i)
         )
         p.start()
         processes.append(p)

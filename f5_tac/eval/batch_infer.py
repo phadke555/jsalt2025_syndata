@@ -20,12 +20,12 @@ def main():
     print(f"Detected {len(devices)} GPUs: {devices}")
 
     # Load model & vocoder
-    model, vocoder = load_model_and_vocoder(args.ckpt_path, args.vocab_file, args.lora)
+    # model, vocoder = load_model_and_vocoder(args.ckpt_path, args.vocab_file, args.lora)
 
     # Process all metadata rows
     metadata_path = os.path.join(args.data_root, "metadata.csv")
     print("Processing Eval Metadata and Generating Conversations")
-    process_all(metadata_path, args.output_path, model, vocoder, devices)
+    process_all(metadata_path, args.output_path, args.ckpt_path, args.vocab_file, args.lora, devices)
 
 if __name__ == "__main__":
     main()
