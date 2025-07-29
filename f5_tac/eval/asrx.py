@@ -37,7 +37,7 @@ def transcribe_dialogue(audio_path, model_size="large-v2", device="cuda", output
         )
 
         # 2d) Turn each segment into a SupervisionSegment
-        for i, seg in enumerate(result["segments"], start=1):
+        for i, seg in enumerate(aligned["segments"], start=1):
             start = seg["start"]
             end = seg["end"]
             text = seg.get("text", "").strip()
