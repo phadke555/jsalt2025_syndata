@@ -8,7 +8,7 @@ from lhotse import RecordingSet, SupervisionSet, Recording, SupervisionSegment
 old_wav_dir = "/work/users/r/p/rphadke/JSALT/fisher/fisher_wavs"
 old_supervisions_path = "/work/users/r/p/rphadke/JSALT/fisher/lhotse_manifests/fixed/supervisions.jsonl.gz"
 old_recordings_path = "/work/users/r/p/rphadke/JSALT/fisher/lhotse_manifests/fixed/recordings.jsonl.gz"
-new_data_dir = "/work/users/r/p/rphadke/data/fisher_100"
+new_data_dir = "/work/users/r/p/rphadke/data/fisher"
 new_wav_dir = os.path.join(new_data_dir, "wavs")
 new_manifest_dir = os.path.join(new_data_dir, "manifests")
 
@@ -28,13 +28,13 @@ for rec in old_recordings:
 # Split unique conversation IDs into train/dev/test
 unique_ids = list(set([rec_id.rsplit("-", 1)[0] for rec_id in recording_map.keys()]))
 unique_ids.sort()
-unique_ids = unique_ids[:1000]
+unique_ids = unique_ids[:500]
 # random.seed(42)  # For reproducibility
 # random.shuffle(unique_ids)
 
 n_total = len(unique_ids)
-n_train = int(0.8 * n_total)
-n_dev = int(0.1 * n_total)
+n_train = int(1.0 * n_total)
+n_dev = int(0 * n_total)
 
 train_ids = set(unique_ids[:n_train])
 dev_ids = set(unique_ids[n_train:n_train + n_dev])
@@ -57,19 +57,19 @@ for base_id in unique_ids:
     wav_b_path = os.path.join(old_wav_dir, f"{base_id}-B.wav")
     wav_mix_path = os.path.join(new_wav_dir, f"{base_id}.wav")
 
-    # Load and mix audio
-    new_freq=16000
-    audio_a, sr_a = torchaudio.load(wav_a_path)
-    audio_a = torchaudio.transforms.Resample(orig_freq=sr_a, new_freq=new_freq)(audio_a)
-    audio_b, sr_b = torchaudio.load(wav_b_path)
-    audio_b = torchaudio.transforms.Resample(orig_freq=sr_b, new_freq=new_freq)(audio_b)
-    assert sr_a == sr_b, f"Sample rates differ for {base_id}"
+    # # Load and mix audio
+    # new_freq=16000
+    # audio_a, sr_a = torchaudio.load(wav_a_path)
+    # audio_a = torchaudio.transforms.Resample(orig_freq=sr_a, new_freq=new_freq)(audio_a)
+    # audio_b, sr_b = torchaudio.load(wav_b_path)
+    # audio_b = torchaudio.transforms.Resample(orig_freq=sr_b, new_freq=new_freq)(audio_b)
+    # assert sr_a == sr_b, f"Sample rates differ for {base_id}"
 
-    min_len = min(audio_a.shape[1], audio_b.shape[1])
-    mixture = audio_a[:, :min_len] + audio_b[:, :min_len]
+    # min_len = min(audio_a.shape[1], audio_b.shape[1])
+    # mixture = audio_a[:, :min_len] + audio_b[:, :min_len]
 
-    # Save mixed audio
-    torchaudio.save(wav_mix_path, mixture, new_freq)
+    # # Save mixed audio
+    # torchaudio.save(wav_mix_path, mixture, new_freq)
 
     # Create Lhotse Recording
     recording = Recording.from_file(wav_mix_path, recording_id=base_id)
@@ -105,7 +105,7 @@ for split_name, data in splits.items():
     rec_set = RecordingSet.from_recordings(data["recordings"])
     sup_set = SupervisionSet.from_segments(data["supervisions"])
 
-    rec_set.to_file(os.path.join(new_manifest_dir, f"fisher_mix_recordings_{split_name}.jsonl.gz"))
-    sup_set.to_file(os.path.join(new_manifest_dir, f"fisher_mix_supervisions_{split_name}.jsonl.gz"))
+    rec_set.to_file(os.path.join(new_manifest_dir, f"fisher_mix500_recordings_{split_name}.jsonl.gz"))
+    sup_set.to_file(os.path.join(new_manifest_dir, f"fisher_mix500_supervisions_{split_name}.jsonl.gz"))
 
 print("✅ Finished creating train/dev/test manifests and mixed WAVs.")
