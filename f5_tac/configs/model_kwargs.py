@@ -34,3 +34,5 @@ lora_configv3 = LoraConfig(
     lora_dropout=0.1,
     bias="none",
 )
+
+unfrozen_modules = ["tac", "text_embed.text_embed", "input_embed"]

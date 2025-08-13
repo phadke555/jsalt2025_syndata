@@ -1,3 +1,4 @@
 lhotse
 peft==0.16.0
 jiwer<4.0.0
+pyannote.audio

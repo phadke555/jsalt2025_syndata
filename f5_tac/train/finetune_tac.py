@@ -92,8 +92,6 @@ def main():
     vocab_char_map, vocab_size = get_tokenizer(args.tokenizer_path,args.tokenizer)
     print(f"Loaded tokenizer with vocab size: {vocab_size}")
 
-    # --- 3. Define Model Architecture and Mel Spectrogram settings ---
-    # These should match the architecture of the pretrained model you are loading.
 
     # --- 4. Instantiate Your New Models ---
     print("Instantiating F5-TAC models...")
@@ -112,23 +110,19 @@ def main():
     
 
 
-    # --- 5. CRITICAL: Load Pretrained Weights into the New Architecture ---
+    # --- 5. Load Pretrained Weights into the New Architecture ---
     print("Loading pretrained weights...")
-    # 1) Load the raw checkpoint
     if local_pretrain_path.endswith(".safetensors"):
         from safetensors.torch import load_file
         ckpt = load_file(local_pretrain_path, device="cpu")
     else:
         ckpt = torch.load(local_pretrain_path, map_location="cpu")
-
-    # 2) Unwrap any nesting
     state = (
         ckpt.get("model_state_dict", 
         ckpt.get("ema_model_state_dict", ckpt))
     )
-
-    # 3) Strip an ‘ema_model.’ prefix if it sneaked in
     state = {k.replace("ema_model.", ""): v for k, v in state.items()}
+
 
     old_emb = state["transformer.text_embed.text_embed.weight"]  # [V, D]
     if old_emb.shape[0] < vocab_size + 1:
@@ -146,24 +140,17 @@ def main():
     print("  • missing   (should only be tac module keys)   :", incompatible.missing_keys[:5], "…")
     print("  • unexpected  :", incompatible.unexpected_keys[:5], "…")
 
-    # # Freeze initial transformer layers
-    # freeze_layers = 8  # freeze first 12 layers
-    # for i, block in enumerate(transformer_backbone.transformer_blocks):
-    #     if i < freeze_layers:
-    #         for name, param in block.named_parameters():
-    #             if "norm" not in name and "tac" not in name:  # keep LayerNorm trainable
-    #                 param.requires_grad = False
-    # print(f"✔️ Frozen first {freeze_layers} layers of DiTWithTAC")
-
     # ----------------------------------------------------------
     # LoRA Experiment
     from peft import LoraConfig, PeftModel, LoraModel, get_peft_model
 
     model = get_peft_model(model, lora_configv2)
 
+    from f5_tac.configs.model_kwargs import unfrozen_modules
     for name, param in model.named_parameters():
-        if "tac" in name or "text_embed.text_embed" in name or "input_embed" in name:
-            param.requires_grad = True
+        for name_in in unfrozen_modules:
+            if name_in in name:
+                param.requires_grad = True
             
     model.print_trainable_parameters()
     # ----------------------------------------------------------
