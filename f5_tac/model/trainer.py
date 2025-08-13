@@ -445,7 +445,15 @@ class Trainer:
                     # ---------------------------------------------
 
                     if self.max_grad_norm > 0 and self.accelerator.sync_gradients:
+                        with torch.no_grad():
+                            total_grad_norm = torch.norm(torch.stack([
+                                p.grad.norm(2)
+                                for p in self.model.parameters()
+                                if p.grad is not None
+                            ]), 2)
+                        self.accelerator.log({"total_grad_norm": total_grad_norm}, step=global_update)
                         self.accelerator.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
+
 
                     self.optimizer.step()
                     self.scheduler.step()

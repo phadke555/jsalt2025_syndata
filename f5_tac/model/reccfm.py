@@ -332,22 +332,26 @@ class CFMWithTACRecon(nn.Module):
         # --- Pre-process Speaker B ---
         if mel_B.ndim == 2: mel_B = self.mel_spec(mel_B).permute(0, 2, 1)
         # if isinstance(text_B, list): text_B = list_str_to_tensor(text_B).to(self.device)
-
         batch, _, dtype, device = *mel_A.shape[:2], mel_A.dtype, self.device
 
         if isinstance(text_A, list) and isinstance(text_B, list):
-            # 1) merge into one list of 2*batch utterances
-            merged_texts = text_A + text_B
-            # 2) convert all 2*batch sequences → ids and pad to the same length L
-            merged_texts = list_str_to_idx(merged_texts, self.vocab_char_map).to(device)
-            # 3) split back into two [batch, L] tensors
-            text_A, text_B = torch.chunk(merged_texts, 2, dim=0)
+            text_A = list_str_to_idx(text_A, self.vocab_char_map).to(device)
+            text_B = list_str_to_idx(text_B, self.vocab_char_map).to(device)
         else:
             # If one side is already tensor (e.g. resumed), ensure it’s on device
             if isinstance(text_A, torch.Tensor):
                 text_A = text_A.to(device)
             if isinstance(text_B, torch.Tensor):
                 text_B = text_B.to(device)
+
+        max_len = max(text_A.shape[1], text_B.shape[1])
+        pad_value = -1
+        if text_A.shape[1] < max_len:
+            pad = torch.full((text_A.shape[0], max_len - text_A.shape[1]), pad_value, device=device, dtype=text_A.dtype)
+            text_A = torch.cat([text_A, pad], dim=1)
+        if text_B.shape[1] < max_len:
+            pad = torch.full((text_B.shape[0], max_len - text_B.shape[1]), pad_value, device=device, dtype=text_B.dtype)
+            text_B = torch.cat([text_B, pad], dim=1)
         
         # --- Flow Matching Logic (performed independently) ---
         x1_A, x0_A = mel_A, torch.randn_like(mel_A)

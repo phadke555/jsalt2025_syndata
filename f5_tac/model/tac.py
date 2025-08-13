@@ -85,6 +85,7 @@ class TAC(torch.nn.Module):
 
         # final transform 0 init 
         torch.nn.init.constant_(self.transform_final[0].weight, 0.0)
+        # torch.nn.init.normal_(self.transform_final[0].weight, mean=0.0, std=1e-5)
         torch.nn.init.constant_(self.transform_final[0].bias, 0.0)
 
     def _init_weights(self, m):
