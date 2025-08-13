@@ -127,13 +127,6 @@ def load_doublemodel_and_vocoder(ckpt_path, vocab_file, device, lora=False):
 def load_model_and_vocoder(ckpt_path, vocab_file, device, lora=False):
     """Load model and vocoder."""
     vocab_char_map, vocab_size = get_tokenizer(vocab_file, "custom")
-    # mel_spec_kwargs = dict(
-    #     n_fft=1024, hop_length=256, win_length=1024,
-    #     n_mel_channels=100, target_sample_rate=24000, mel_spec_type="vocos",
-    # )
-    # dit_cfg = dict(
-    #     dim=1024, depth=22, heads=16, ff_mult=2, text_dim=512, conv_layers=4,
-    # )
     transformer = DiTWithTAC(
         **dit_cfg,
         num_speakers=2,
@@ -176,7 +169,7 @@ def save_audio(wav, path, sr):
     torchaudio.save(path, wav, sr)
 
 
-def generate_sample(model, vocoder, wav_A, wav_B, text_A, text_B, gen_text_A=None, gen_text_B=None, device=None):
+def generate_sample(model, vocoder, wav_A, wav_B, text_A, text_B, gen_text_A=None, gen_text_B=None, device=None, steps=32, cfg_strength=1.5, sway_sampling_coef=-1.0, seed=42, max_duration=4096, use_epss=True):
     """Generate TTS samples for two speakers."""
     mel_A = model.mel_spec(wav_A)
     mel_B = model.mel_spec(wav_B)
@@ -213,37 +206,28 @@ def generate_sample(model, vocoder, wav_A, wav_B, text_A, text_B, gen_text_A=Non
         conds=conds,
         durations=durations,
         vocoder=vocoder,
-        steps=32,
-        cfg_strength=1.5,
-        sway_sampling_coef=-1.0,
-        seed=42,
-        max_duration=4096,
+        steps=steps,
+        cfg_strength=cfg_strength,
+        sway_sampling_coef=sway_sampling_coef,
+        seed=seed,
+        max_duration=max_duration,
         use_epss=True
     )
 
     return mels_out, T_A, T_B
 
 
-def process_row(row, model, vocoder, out_dir, device, transcript_file):
+def process_row(row, model, vocoder, out_dir, device, sr=24000):
     """Process one metadata row: generate & save outputs."""
 
-    sr = 24000  # target sample rate
-
-    # --- Extract identifiers from wav path ---
-    # e.g. /path/to/fe_03_00001_0000_A.wav → fe_03_00001_0000
     base_name_A = os.path.basename(row["speaker_A_wav"])
-
-    # Take common prefix (before _A.wav or _B.wav)
     clip_id = base_name_A.replace("_A.wav", "")
 
     # --- Load & prepare reference wavs ---
     ref_wav_A, orig_sr_A = torchaudio.load(row["speaker_A_wav"])
     ref_wav_B, orig_sr_B = torchaudio.load(row["speaker_B_wav"])
-
     wav_A = prep_wav(ref_wav_A, orig_sr_A, sr, device)
     wav_B = prep_wav(ref_wav_B, orig_sr_B, sr, device)
-
-    # Handle potential missing text
     ref_text_A = row["speaker_A_text"]
     ref_text_B = row["speaker_B_text"]
 
@@ -274,12 +258,7 @@ def process_row(row, model, vocoder, out_dir, device, transcript_file):
     max_len = max(wav_A.shape[-1], wav_B.shape[-1])
     A_pad = F.pad(wav_A, (0, max_len - wav_A.shape[-1]))
     B_pad = F.pad(wav_B, (0, max_len - wav_B.shape[-1]))
-
     mono = A_pad + B_pad
-
-    # gen_waveforms = vocoder.decode(
-    #     torch.cat([gen_mel_A, gen_mel_B], dim=0).permute(0, 2, 1)
-    # ).detach().cpu()
 
     # --- Save combined generated audio ---
     out_wav_path = os.path.join(out_dir, f"{clip_id}_generated.wav")
