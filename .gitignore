@@ -31,3 +31,4 @@ unittest_sa.slurm
 TS-ASR-Whisper/
 envs/tts_env
 envs/ts_asr_whisper
+versa/

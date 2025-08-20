@@ -23,3 +23,31 @@ def list_str_to_idx(
         list_idx_tensors.append(torch.tensor(idxs))
     text = pad_sequence(list_idx_tensors, padding_value=padding_value, batch_first=True)
     return text
+
+from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
+def load_whisper_pipeline(device, model_id="openai/whisper-large-v3-turbo"):
+    model = AutoModelForSpeechSeq2Seq.from_pretrained(
+        model_id, torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32, low_cpu_mem_usage=True
+    )
+    model.to(device)
+
+    processor = AutoProcessor.from_pretrained(model_id)
+
+    pipe = pipeline(
+        "automatic-speech-recognition",
+        model=model,
+        tokenizer=processor.tokenizer,
+        feature_extractor=processor.feature_extractor,
+        chunk_length_s=30,
+        batch_size=1,  # batch size for inference - set based on your device
+        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+        device=device,
+    )
+    return pipe
+
+import re
+def normalize_text(s: str):
+    s = s.lower()
+    s = re.sub(r"[^\w\s]", "", s)  # remove punctuation
+    s = re.sub(r"\s+", " ", s).strip()
+    return s

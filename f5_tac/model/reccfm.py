@@ -325,6 +325,7 @@ class CFMWithTACRecon(nn.Module):
             cond_B (Tensor): The conditional input for speaker B (for debugging).
             pred_B (Tensor): The prediction for speaker B (for debugging).
         """
+        # import pdb; pdb.set_trace()
         # --- Pre-process Speaker A ---
         if mel_A.ndim == 2: mel_A = self.mel_spec(mel_A).permute(0, 2, 1)
         # if isinstance(text_A, list): text_A = list_str_to_tensor(text_A).to(self.device)

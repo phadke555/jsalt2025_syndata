@@ -21,6 +21,8 @@ from f5_tac.model.cfm import CFMWithTAC
 from f5_tts.model.dataset import DynamicBatchSampler, collate_fn
 from f5_tts.model.utils import default, exists
 
+from versa.sequence_metrics.mcd_f0 import mcd_f0
+
 from torch import nn
 
 # trainer
@@ -52,6 +54,7 @@ class Trainer:
         log_samples: bool = False,
         last_per_updates=None,
         val_per_updates=None,
+        early_stopping_threshold=5,
         accelerate_kwargs: dict = dict(),
         ema_kwargs: dict = dict(),
         bnb_optimizer: bool = False,
@@ -150,6 +153,17 @@ class Trainer:
         else:
             self.optimizer = AdamW(model.parameters(), lr=learning_rate)
         self.model, self.optimizer = self.accelerator.prepare(self.model, self.optimizer)
+
+        from f5_tac.model.utils import load_whisper_pipeline
+        self.pipe = load_whisper_pipeline(device=self.accelerator.device)
+
+        from f5_tts.infer.utils_infer import load_vocoder
+        self.vocoder = load_vocoder(
+                vocoder_name=self.vocoder_name, is_local=self.is_local_vocoder, local_path=self.local_vocoder_path
+        )
+
+        self.early_stopping_threshold = early_stopping_threshold
+
 
     @property
     def is_main(self):
@@ -273,6 +287,104 @@ class Trainer:
         del checkpoint
         gc.collect()
         return update
+    
+    def eval(self, val_dataloader: DataLoader, metrics=["wer", "mcd"]):
+        resampler = torchaudio.transforms.Resample(orig_freq=24000, new_freq=16000).to(self.accelerator.device)
+
+        mcds_A = []
+        mcds_B = []
+
+        wers_A = []
+        wers_B = []
+        
+        with torch.no_grad():
+            for val_batch in val_dataloader:
+                # import pdb; pdb.set_trace()
+                mel_A = val_batch["mel_A"].permute(0, 2, 1)
+                text_A = val_batch["text_A"]
+                mel_lengths_A = val_batch["mel_lengths_A"]
+                mel_B = val_batch["mel_B"].permute(0, 2, 1)
+                text_B = val_batch["text_B"]
+                mel_lengths_B = val_batch["mel_lengths_B"]
+
+                if self.recon_loss:
+                    loss_A, loss_B, mix_loss, cond_A, pred_A, cond_B, pred_B = self.model(
+                        mel_A=mel_A,
+                        text_A=text_A,
+                        mel_lengths_A=mel_lengths_A,
+                        mel_B=mel_B,
+                        text_B=text_B,
+                        mel_lengths_B=mel_lengths_B,
+                        noise_scheduler=self.noise_scheduler,
+                    )
+                else:
+                    loss_A, loss_B, cond_A, pred_A, cond_B, pred_B = self.model(
+                        mel_A=mel_A,
+                        text_A=text_A,
+                        mel_lengths_A=mel_lengths_A,
+                        mel_B=mel_B,
+                        text_B=text_B,
+                        mel_lengths_B=mel_lengths_B,
+                        noise_scheduler=self.noise_scheduler,
+                    )
+                
+                pred_A = self.vocoder.decode(pred_A.permute(0, 2, 1))
+                real_A = self.vocoder.decode(mel_A.permute(0, 2, 1))
+                pred_B = self.vocoder.decode(pred_B.permute(0, 2, 1))
+                real_B = self.vocoder.decode(mel_B.permute(0, 2, 1))
+
+                if "mcd" in metrics:
+                    mcd_A = mcd_f0(
+                        pred_x=pred_A.squeeze().cpu().numpy(), gt_x=real_A.squeeze().cpu().numpy(),
+                        fs=24000,
+                        f0min=50, f0max=500,
+                        mcep_shift=256 * 1000 / 24000,  # ≈ 10.67 ms
+                        mcep_fftl=1024,
+                        mcep_dim=39,
+                        mcep_alpha=0.466,
+                        power_threshold=-20,
+                        dtw=True
+                    )["mcd"]
+                    mcd_B = mcd_f0(
+                        pred_x=pred_B.squeeze().cpu().numpy(), gt_x=real_B.squeeze().cpu().numpy(),
+                        fs=24000,
+                        f0min=50, f0max=500,
+                        mcep_shift=256 * 1000 / 24000,  # ≈ 10.67 ms
+                        mcep_fftl=1024,
+                        mcep_dim=39,
+                        mcep_alpha=0.466,
+                        power_threshold=-20,
+                        dtw=True
+                    )["mcd"]
+
+                    mcds_A.append(mcd_A)
+                    mcds_B.append(mcd_B)
+
+
+                if "wer" in metrics:
+                
+                    import evaluate
+                    wer = evaluate.load("wer")
+                    
+                    pred_A = resampler(pred_A)
+                    pred_B = resampler(pred_B)
+
+                    pred_A  = self.pipe(pred_A.squeeze(0).cpu().numpy())["text"]
+                    from f5_tac.model.utils import normalize_text
+                    pred_A = normalize_text(pred_A)
+                    # import pdb; pdb.set_trace()
+                    score_A = wer.compute(predictions=[pred_A], references=text_A)
+                    wers_A.append(score_A)
+                    
+                    pred_B  = self.pipe(pred_B.squeeze(0).cpu().numpy())["text"]
+                    pred_B = normalize_text(pred_B)
+                    score_B = wer.compute(predictions=[pred_B], references=text_B)
+                    wers_B.append(score_B)
+        
+        import numpy as np
+        return np.median(wers_A), np.median(wers_B), np.mean(mcds_A), np.mean(mcds_B)
+
+
 
     def train(self, train_dataset: Dataset, val_dataset: Dataset, collate_fn, num_workers=2, prefetch_factor=4, resumable_with_seed: int = None):
         if self.log_samples:
@@ -363,6 +475,9 @@ class Trainer:
         start_update = self.load_checkpoint()
         global_update = start_update
 
+        early_stopping = 0
+        min_wer_A = float("inf")
+
         if exists(resumable_with_seed):
             orig_epoch_step = len(train_dataloader)
             start_step = start_update * self.grad_accumulation_steps
@@ -394,6 +509,7 @@ class Trainer:
             )
 
             for batch in current_dataloader:
+                # import pdb; pdb.set_trace()
                 with self.accelerator.accumulate(self.model):
                     mel_A = batch["mel_A"].permute(0, 2, 1)
                     text_A = batch["text_A"]
@@ -451,7 +567,7 @@ class Trainer:
                                 for p in self.model.parameters()
                                 if p.grad is not None
                             ]), 2)
-                        self.accelerator.log({"total_grad_norm": total_grad_norm}, step=global_update)
+                        self.accelerator.log({"train/total_grad_norm": total_grad_norm}, step=global_update)
                         self.accelerator.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
 
 
@@ -471,11 +587,11 @@ class Trainer:
                     if self.recon_loss:
                         self.accelerator.log(
                             {
-                                "loss": total_loss.item(),
-                                "loss_A": loss_A.item(),
-                                "loss_B": loss_B.item(),
-                                "reconstruction_loss": mix_loss.item(),
-                                "lr": self.scheduler.get_last_lr()[0]
+                                "train/loss": total_loss.item(),
+                                "train/loss_A": loss_A.item(),
+                                "train/loss_B": loss_B.item(),
+                                "train/loss_reconstruction": mix_loss.item(),
+                                "train/lr": self.scheduler.get_last_lr()[0]
                             }, 
                             step=global_update
                         )
@@ -531,10 +647,22 @@ class Trainer:
                             total_val_loss += batch_loss.item()
                             n_val_batches += 1
                     avg_val_loss = total_val_loss / max(1, n_val_batches)
-                    self.accelerator.log({"val_loss": avg_val_loss}, step=global_update)
+                    self.accelerator.log({"eval/mse_loss": avg_val_loss}, step=global_update)
                     if self.logger == "tensorboard":
                         self.writer.add_scalar("val_loss", avg_val_loss, global_update)
                     self.model.train()
+
+                if (global_update == 0 or global_update % self.val_per_updates == 0) and self.accelerator.is_local_main_process:
+                    self.model.eval()
+                    wer_A, wer_B, mcd_A, mcd_B = self.eval(val_dataloader)
+                    if wer_A <= min_wer_A:
+                        early_stopping = 0
+                        min_wer_A = wer_A
+                    else:
+                        early_stopping += 1
+                    self.accelerator.log({"eval/median-werA": wer_A, "eval/median-werB": wer_B, "eval/mean-mcdA": mcd_A, "eval/mean-mcdB": mcd_B}, step=global_update)
+                    self.model.train()
+
 
                 if global_update % self.last_per_updates == 0 and self.accelerator.sync_gradients:
                     self.save_checkpoint(global_update, last=True)
@@ -572,6 +700,9 @@ class Trainer:
                             f"{log_samples_path}/update_{global_update}_ref.wav", ref_audio, target_sample_rate
                         )
                         self.model.train()
+                
+            if early_stopping >= self.early_stopping_threshold:
+                break
 
         self.save_checkpoint(global_update, last=True)
 

@@ -158,6 +158,7 @@ def main():
     num_devices = torch.cuda.device_count()
     print(f"Number of available CUDA devices: {num_devices}")
 
+    print(f"logger {args.logger}")
 
     # --- 6. Instantiate Trainer ---
     print("Initializing Trainer...")
@@ -177,7 +178,7 @@ def main():
         mix_loss_lambda=1.0,
         logger=args.logger,
         recon_loss = True,
-        wandb_project=f"f5_tac_2spk",
+        wandb_project=f"unittesting",
         wandb_run_name=args.exp_name,
         log_samples=args.log_samples,
         bnb_optimizer=True,
@@ -197,7 +198,7 @@ def main():
         dataset_path=val_dataset_path,
         mel_spec_kwargs=mel_spec_kwargs
     )
-    print("Train dataset length:", len(train_dataset))
+    print("Val dataset length:", len(train_dataset))
     
     print("Starting training...")
     trainer.train(

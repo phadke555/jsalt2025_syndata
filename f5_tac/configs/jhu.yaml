@@ -1,8 +1,8 @@
 # ----------------------- F5-TAC Finetune Config ----------------------- #
-exp_name: BASELINESingle-3.0Reproduce
+exp_name: UnitTesting
 
-dataset_name: data/fisher_chunks_1K
-val_dataset_name: data/fisher_chunks_1K_eval
+dataset_name: data/fisher_chunks
+val_dataset_name: data/fisher_chunks
 data_root: /export/fs06/rphadke1
 
 tokenizer: custom
@@ -14,7 +14,7 @@ finetune: true
 learning_rate: 1e-8
 epochs: 10
 
-batch_size_per_gpu: 8000
+batch_size_per_gpu: 2000
 batch_size_type: frame
 max_samples: 64
 grad_accumulation_steps: 1
