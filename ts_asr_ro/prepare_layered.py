@@ -1,8 +1,8 @@
 from lhotse import SupervisionSet, Recording, RecordingSet, CutSet
 
 # 1) Load your two per‑speaker supervision sets
-sups_A = SupervisionSet.from_jsonl("/work/users/r/p/rphadke/data/simfisher-layered/manifests/supervisionsA.jsonl.gz")
-sups_B = SupervisionSet.from_jsonl("/work/users/r/p/rphadke/data/simfisher-layered/manifests/supervisionsB.jsonl.gz")
+sups_A = SupervisionSet.from_jsonl("/work/users/r/p/rphadke/data/simfisher-layered/manifests/supervisionsAnew.jsonl.gz")
+sups_B = SupervisionSet.from_jsonl("/work/users/r/p/rphadke/data/simfisher-layered/manifests/supervisionsBnew.jsonl.gz")
 
 # 2) Rewrite each set: add speaker label and disambiguate the ID
 def tag_and_rename(sup_set: SupervisionSet, speaker: str):
@@ -25,7 +25,7 @@ mix_supervisions = (
 )
 
 # 4) (Optional) write out the merged set
-mix_supervisions.to_file("/work/users/r/p/rphadke/data/simfisher-layered/manifests/supervisions_all_convs_mix.jsonl.gz")
+mix_supervisions.to_file("/work/users/r/p/rphadke/data/simfisher-layered/manifests/supervisionsnew.jsonl.gz")
 
 from pathlib import Path
 input_path = "/work/users/r/p/rphadke/data/simfisher-layered/concatenated_generations"
@@ -49,7 +49,7 @@ for file_path in input_path.rglob("*"):
 
 # Assemble into a RecordingSet
 recording_set = RecordingSet.from_recordings(recordings)
-recording_set.to_file("/work/users/r/p/rphadke/data/simfisher-layered/manifests/recordings.jsonl.gz")
+# recording_set.to_file("/work/users/r/p/rphadke/data/simfisher-layered/manifests/recordings.jsonl.gz")
 
 
 cuts = CutSet.from_manifests(
@@ -61,4 +61,4 @@ for cut in cuts:
     for sup in cut.supervisions:
         sup.duration = min(sup.duration, cut.duration - sup.start)
 
-cuts.to_file("/work/users/r/p/rphadke/data/simfisher-layered/manifests/cutset.jsonl.gz")
+cuts.to_file("/work/users/r/p/rphadke/data/simfisher-layered/manifests/cutsetnew.jsonl.gz")
