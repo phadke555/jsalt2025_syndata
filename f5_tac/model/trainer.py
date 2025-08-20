@@ -54,7 +54,7 @@ class Trainer:
         log_samples: bool = False,
         last_per_updates=None,
         val_per_updates=None,
-        early_stopping_threshold=5,
+        early_stopping_threshold=10,
         accelerate_kwargs: dict = dict(),
         ema_kwargs: dict = dict(),
         bnb_optimizer: bool = False,
@@ -288,11 +288,13 @@ class Trainer:
         gc.collect()
         return update
     
+    @torch.no_grad()
     def eval(self, val_dataloader: DataLoader, metrics=["wer", "mcd"]):
         resampler = torchaudio.transforms.Resample(orig_freq=24000, new_freq=16000).to(self.accelerator.device)
 
         mcds_A = []
         mcds_B = []
+        seen = 0
 
         wers_A = []
         wers_B = []
@@ -306,6 +308,8 @@ class Trainer:
                 mel_B = val_batch["mel_B"].permute(0, 2, 1)
                 text_B = val_batch["text_B"]
                 mel_lengths_B = val_batch["mel_lengths_B"]
+                if text_A is None or text_B is None or text_A[0]=="" or text_B[0]=="":
+                    continue
 
                 if self.recon_loss:
                     loss_A, loss_B, mix_loss, cond_A, pred_A, cond_B, pred_B = self.model(
@@ -333,7 +337,7 @@ class Trainer:
                 pred_B = self.vocoder.decode(pred_B.permute(0, 2, 1))
                 real_B = self.vocoder.decode(mel_B.permute(0, 2, 1))
 
-                if "mcd" in metrics:
+                if "mcd" in metrics and seen <= 10:
                     mcd_A = mcd_f0(
                         pred_x=pred_A.squeeze().cpu().numpy(), gt_x=real_A.squeeze().cpu().numpy(),
                         fs=24000,
@@ -359,6 +363,10 @@ class Trainer:
 
                     mcds_A.append(mcd_A)
                     mcds_B.append(mcd_B)
+                    seen += 1
+                # else:
+                    # mcds_A.append(0)
+                    # mcds_B.append(0)
 
 
                 if "wer" in metrics:
@@ -551,14 +559,6 @@ class Trainer:
                         total_loss = loss_A + loss_B
                         self.accelerator.backward(total_loss)
 
-                    # ----------------------------------------------
-                    # Check LoRA works as expected
-                    # for name, param in self.model.named_parameters():
-                    #     if not param.requires_grad and param.grad is not None:
-                    #         raise RuntimeError(f"Frozen param {name} got a gradient!")
-                    #     if param.requires_grad and param.grad is None:
-                    #         raise RuntimeError(f"Trainable  param {name} saw no gradient!")
-                    # ---------------------------------------------
 
                     if self.max_grad_norm > 0 and self.accelerator.sync_gradients:
                         with torch.no_grad():
@@ -652,9 +652,9 @@ class Trainer:
                         self.writer.add_scalar("val_loss", avg_val_loss, global_update)
                     self.model.train()
 
-                if (global_update == 0 or global_update % self.val_per_updates == 0) and self.accelerator.is_local_main_process:
+                if (global_update == 0 or global_update % self.last_per_updates == 0) and self.accelerator.is_local_main_process:
                     self.model.eval()
-                    wer_A, wer_B, mcd_A, mcd_B = self.eval(val_dataloader)
+                    wer_A, wer_B, mcd_A, mcd_B = self.eval(val_dataloader, metrics=["wer", "mcd"])
                     if wer_A <= min_wer_A:
                         early_stopping = 0
                         min_wer_A = wer_A

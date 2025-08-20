@@ -57,6 +57,45 @@ def setup_logging():
     )
 
 
+# CHANGE: helper to build per-speaker texts with [spkchange] only on real speaker changes
+def build_spkchange_texts(cut_A, cut_B) -> tuple[str, str]:
+    """
+    Merge A/B supervisions by their (cut-relative) start times and create two strings:
+    - text_A: A's utterances concatenated; append [spkchange] only when the next utterance is by B
+    - text_B: B's utterances concatenated; append [spkchange] only when the next utterance is by A
+    """
+    # Collect (speaker, start_time, text)
+    merged = []
+    for s in cut_A.supervisions:
+        merged.append(("A", s.start, s.text))
+    for s in cut_B.supervisions:
+        merged.append(("B", s.start, s.text))
+
+    # Sort by time; ties keep input order
+    merged.sort(key=lambda x: x[1])
+
+    a_parts, b_parts = [], []
+    for i, (spk, _, txt) in enumerate(merged):
+        next_spk = merged[i + 1][0] if i + 1 < len(merged) else None
+
+        if spk == "A":
+            if txt:
+                a_parts.append(txt)
+            # Add boundary token only if the *next* utterance is from the other speaker
+            if next_spk == "B":
+                a_parts.append("[spkchange]")
+        else:  # spk == "B"
+            if txt:
+                b_parts.append(txt)
+            if next_spk == "A":
+                b_parts.append("[spkchange]")
+
+    # Join with single spaces; no trailing token if last utterance has no change after it
+    text_A = " ".join(a_parts).strip()
+    text_B = " ".join(b_parts).strip()
+    return text_A, text_B
+
+
 def main():
     args = parse_args()
     setup_logging()
@@ -87,7 +126,7 @@ def main():
             unique_conv_ids.append(conv_id)
         if args.max_conversations and len(unique_conv_ids) >= args.max_conversations:
             break
-    unique_conv_ids = unique_conv_ids[5000:args.max_conversations]
+    # unique_conv_ids = unique_conv_ids[5000:args.max_conversations]
     logging.info(f"Limiting to first {len(unique_conv_ids)} conversations: {unique_conv_ids}")
     cuts = cuts.filter(lambda c: c.recording_id.rsplit("-", 1)[0] in unique_conv_ids)
 
@@ -129,23 +168,25 @@ def main():
             samples_A = samples_A.unsqueeze(0)
             samples_B = samples_B.unsqueeze(0)
 
-        torchaudio.save(
-            str(out_A),
-            samples_A,
-            sr
-        )
-        torchaudio.save(
-            str(out_B),
-            samples_B,
-            sr
-        )
+        # torchaudio.save(
+        #     str(out_A),
+        #     samples_A,
+        #     sr
+        # )
+        # torchaudio.save(
+        #     str(out_B),
+        #     samples_B,
+        #     sr
+        # )
 
         durations[str(out_A)] = cut_A.duration
         durations[str(out_B)] = cut_B.duration
 
         # add a trailing “-” to each supervision utterance
-        text_A = " ".join(f"{s.text} -" for s in cut_A.supervisions)
-        text_B = " ".join(f"{s.text} -" for s in cut_B.supervisions)
+        # text_A = " ".join(f"{s.text} -" for s in cut_A.supervisions)
+        # text_B = " ".join(f"{s.text} -" for s in cut_B.supervisions)
+        text_A, text_B = build_spkchange_texts(cut_A, cut_B)
+
 
         rows.append({
             "recording_id":   conv_id,

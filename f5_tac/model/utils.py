@@ -11,12 +11,12 @@ def list_str_to_idx(
         idxs = []
         i = 0
         while i < len(t):
-            if t[i : i + 5] == "<utt>":  # Detect "<utt>"
-                idxs.append(vocab_char_map.get("<utt>", 0))
-                i += 5  # Skip over "<utt>"
-            elif t[i : i + 5] == "<sil>":
+            if t[i : i + 11] == "[spkchange]":  # Detect "<utt>"
+                idxs.append(vocab_char_map.get("[spkchange]", 0))
+                i += 11  # Skip over "<utt>"
+            elif t[i : i + 9] == "[silence]":
                 idxs.append(-1)
-                i += 5  # Skip over "<sil>"
+                i += 9  # Skip over "<sil>"
             else:
                 idxs.append(vocab_char_map.get(t[i], 0))
                 i += 1

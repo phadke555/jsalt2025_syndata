@@ -6,7 +6,7 @@ val_dataset_name: data/fisher_chunks
 data_root: /export/fs06/rphadke1
 
 tokenizer: custom
-tokenizer_path: /export/fs06/rphadke1/data/vocab_files/vocab_v1.txt
+tokenizer_path: /export/fs06/rphadke1/data/vocab_files/vocab_v2.1.txt
 
 pretrain: /export/fs06/rphadke1/ckpts/pretrained_model_1250000.safetensors
 finetune: true

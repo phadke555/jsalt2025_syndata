@@ -32,3 +32,5 @@ TS-ASR-Whisper/
 envs/tts_env
 envs/ts_asr_whisper
 versa/
+asrx.slurm
+concat_speech.slurm

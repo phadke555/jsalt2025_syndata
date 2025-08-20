@@ -10,11 +10,10 @@ from cached_path import cached_path
 import yaml
 
 # --- MODIFICATION: Import your new modules ---
-from f5_tac.model.cfm import CFMWithTAC
 from f5_tac.model.reccfm import CFMWithTACRecon
 from f5_tac.model.backbones.dittac import DiTWithTAC
 from f5_tac.model.trainer import Trainer
-from f5_tac.model.dataset import load_conversation_dataset, conversation_collate_fn
+from f5_tac.model.dataset import load_lhotse_dataset, conversation_collate_fn
 from f5_tac.configs.model_kwargs import mel_spec_kwargs, dit_cfg, lora_configv2
 from f5_tts.model.utils import get_tokenizer
 
@@ -181,24 +180,27 @@ def main():
         wandb_project=f"unittesting",
         wandb_run_name=args.exp_name,
         log_samples=args.log_samples,
-        bnb_optimizer=True,
+        bnb_optimizer=args.bnb_optimizer,
         accelerate_kwargs={"mixed_precision": "bf16"}
     )
     
     # --- 7. Load Dataset and Start Training ---
     print("Loading train dataset...")
-    train_dataset = load_conversation_dataset(
-        dataset_path=dataset_path,
+    train_dataset = load_lhotse_dataset(
+        dataset_path="/work/users/r/p/rphadke/JSALT/fisher/lhotse_manifests/fixed/",
+        max_conversations=10,
         mel_spec_kwargs=mel_spec_kwargs
     )
     print("Train dataset length:", len(train_dataset))
 
     print("Loading val dataset...")
-    val_dataset = load_conversation_dataset(
-        dataset_path=val_dataset_path,
+    val_dataset = load_lhotse_dataset(
+        dataset_path="/work/users/r/p/rphadke/JSALT/fisher/lhotse_manifests/fixed/",
+        max_conversations=5,
+        conversation_offset=500,
         mel_spec_kwargs=mel_spec_kwargs
     )
-    print("Val dataset length:", len(train_dataset))
+    print("Val dataset length:", len(val_dataset))
     
     print("Starting training...")
     trainer.train(
