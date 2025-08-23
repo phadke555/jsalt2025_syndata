@@ -289,7 +289,7 @@ class Trainer:
         return update
     
     @torch.no_grad()
-    def eval(self, val_dataloader: DataLoader, metrics=["wer", "mcd"]):
+    def eval_metrics(self, val_dataloader: DataLoader, metrics=["wer", "mcd"]):
         resampler = torchaudio.transforms.Resample(orig_freq=24000, new_freq=16000).to(self.accelerator.device)
 
         mcds_A = []
@@ -396,12 +396,8 @@ class Trainer:
 
     def train(self, train_dataset: Dataset, val_dataset: Dataset, collate_fn, num_workers=2, prefetch_factor=4, resumable_with_seed: int = None):
         if self.log_samples:
-            from f5_tts.infer.utils_infer import cfg_strength, load_vocoder, nfe_step, sway_sampling_coef
+            from f5_tac.infer.utils import cfg_strength, nfe_step, sway_sampling_coef, target_sample_rate, steps, max_duration
 
-            vocoder = load_vocoder(
-                vocoder_name=self.vocoder_name, is_local=self.is_local_vocoder, local_path=self.local_vocoder_path
-            )
-            target_sample_rate = self.accelerator.unwrap_model(self.model).mel_spec.target_sample_rate
             log_samples_path = f"{self.checkpoint_path}/samples"
             os.makedirs(log_samples_path, exist_ok=True)
 
@@ -471,6 +467,7 @@ class Trainer:
         )  # consider a fixed warmup steps while using accelerate multi-gpu ddp
         # otherwise by default with split_batches=False, warmup steps change with num_processes
         total_updates = math.ceil(len(train_dataloader) / self.grad_accumulation_steps) * self.epochs
+        num_update_steps_per_epoch = math.ceil(len(train_dataloader) / self.grad_accumulation_steps)
         decay_updates = total_updates - warmup_updates
         warmup_scheduler = LinearLR(self.optimizer, start_factor=1e-8, end_factor=1.0, total_iters=warmup_updates)
         decay_scheduler = LinearLR(self.optimizer, start_factor=1.0, end_factor=1e-8, total_iters=decay_updates)
@@ -584,6 +581,9 @@ class Trainer:
                     progress_bar.set_postfix(update=str(global_update), loss=total_loss.item())
 
                 if self.accelerator.is_local_main_process:
+                    epoch_progress = (progress_bar.n + 1) / num_update_steps_per_epoch
+                    overall_progress = global_update / total_updates
+                    self.accelerator.log({"train/overall_progress": overall_progress, "train/epoch_progress": epoch + epoch_progress}, step=global_update)
                     if self.recon_loss:
                         self.accelerator.log(
                             {
@@ -652,9 +652,9 @@ class Trainer:
                         self.writer.add_scalar("val_loss", avg_val_loss, global_update)
                     self.model.train()
 
-                if (global_update == 0 or global_update % self.last_per_updates == 0) and self.accelerator.is_local_main_process:
+                if (global_update % self.last_per_updates == 0) and self.accelerator.is_local_main_process:
                     self.model.eval()
-                    wer_A, wer_B, mcd_A, mcd_B = self.eval(val_dataloader, metrics=["wer", "mcd"])
+                    wer_A, wer_B, mcd_A, mcd_B = self.eval_metrics(val_dataloader, metrics=["wer", "mcd"])
                     if wer_A <= min_wer_A:
                         early_stopping = 0
                         min_wer_A = wer_A
@@ -672,34 +672,52 @@ class Trainer:
 
                     # NOTE: this might need to be updated
                     if self.log_samples and self.accelerator.is_local_main_process:
-                        ref_audio_len = mel_lengths_A
-                        infer_text = [ text_A[0] + " " + text_A[0] ]
-                        with torch.inference_mode():
-                            generated, _ = self.accelerator.unwrap_model(self.model).sample(
-                                cond=mel_A[0:1, :ref_audio_len, :],
-                                text=infer_text,
-                                duration=ref_audio_len * 2,
-                                steps=nfe_step,
-                                cfg_strength=cfg_strength,
-                                sway_sampling_coef=sway_sampling_coef,
+                        # import pdb; pdb.set_trace()
+                        if text_A[0] != "" or text_B[0] != "":
+                            ref_audio_A_len = mel_lengths_A[0]
+                            infer_text_A =  text_A[0] + ([" "] if isinstance(text_A[0], list) else " ") + text_A[0] 
+                            ref_audio_B_len = mel_lengths_B[0]
+                            infer_text_B =  text_B[0] + ([" "] if isinstance(text_B[0], list) else " ") + text_B[0]
+                            with torch.inference_mode():
+                                generated, _ = self.accelerator.unwrap_model(self.model).sample_joint(
+                                    texts = [infer_text_A, infer_text_B],
+                                    conds=torch.cat([mel_A[0:1].permute(0, 2, 1), mel_B[0:1].permute(0, 2, 1)], 0),
+                                    durations=[ref_audio_A_len*2, ref_audio_B_len*2],
+                                    vocoder=self.vocoder,
+                                    steps=steps,
+                                    cfg_strength=cfg_strength,
+                                    sway_sampling_coef=sway_sampling_coef,
+                                    max_duration=max_duration,
+                                )
+                                generated = generated.to(torch.float32)
+                                gen_mel_spec_A = generated[0:1, ref_audio_A_len:, :].permute(0, 2, 1).to(self.accelerator.device)
+                                ref_mel_spec_A = batch["mel_A"][0:1]
+                                gen_mel_spec_B = generated[1:2, ref_audio_B_len:, :].permute(0, 2, 1).to(self.accelerator.device)
+                                ref_mel_spec_B = batch["mel_B"][0:1]
+                                if self.vocoder_name == "vocos":
+                                    gen_audio_A = self.vocoder.decode(gen_mel_spec_A).detach().cpu()
+                                    ref_audio_A = self.vocoder.decode(ref_mel_spec_A).detach().cpu()
+                                    gen_audio_B = self.vocoder.decode(gen_mel_spec_B).detach().cpu()
+                                    ref_audio_B = self.vocoder.decode(ref_mel_spec_B).detach().cpu()
+                                elif self.vocoder_name == "bigvgan":
+                                    gen_audio_A = self.vocoder(gen_mel_spec_A).squeeze(0).cpu()
+                                    ref_audio_A = self.vocoder(ref_mel_spec_A).squeeze(0).cpu()
+                            import torch.nn.functional as F
+                            max_len = max(gen_audio_A.shape[-1], gen_audio_B.shape[-1])
+                            A_pad = F.pad(gen_audio_A, (0, max_len - gen_audio_A.shape[-1]))
+                            B_pad = F.pad(gen_audio_B, (0, max_len - gen_audio_B.shape[-1]))
+                            mono = A_pad + B_pad
+                            torchaudio.save(
+                                f"{log_samples_path}/update_{global_update}_genMono.wav", mono, target_sample_rate
                             )
-                            generated = generated.to(torch.float32)
-                            gen_mel_spec = generated[:, ref_audio_len:, :].permute(0, 2, 1).to(self.accelerator.device)
-                            ref_mel_spec = batch["mel_A"][0:1]
-                            if self.vocoder_name == "vocos":
-                                gen_audio = vocoder.decode(gen_mel_spec).detach().cpu()
-                                ref_audio = vocoder.decode(ref_mel_spec).detach().cpu()
-                            elif self.vocoder_name == "bigvgan":
-                                gen_audio = vocoder(gen_mel_spec).squeeze(0).cpu()
-                                ref_audio = vocoder(ref_mel_spec).squeeze(0).cpu()
-
-                        torchaudio.save(
-                            f"{log_samples_path}/update_{global_update}_gen.wav", gen_audio, target_sample_rate
-                        )
-                        torchaudio.save(
-                            f"{log_samples_path}/update_{global_update}_ref.wav", ref_audio, target_sample_rate
-                        )
-                        self.model.train()
+                            torchaudio.save(
+                                f"{log_samples_path}/update_{global_update}_refA.wav", ref_audio_A, target_sample_rate
+                            )
+                            torchaudio.save(
+                                f"{log_samples_path}/update_{global_update}_refB.wav", ref_audio_B, target_sample_rate
+                            )
+                            print(f"Logged a mono sample @ update {global_update}")
+                            self.model.train()
                 
             if early_stopping >= self.early_stopping_threshold:
                 break

@@ -16,14 +16,21 @@ from f5_tac.model.reccfm import CFMWithTACRecon
 from f5_tac.model.backbones.dittac import DiTWithTAC
 from f5_tts.model.cfm import CFM
 from f5_tts.model.backbones.dit import DiT
-from f5_tac.model.dlcfm import CFMDD
-from f5_tac.model.backbones.doubledit import DoubleDiT
 from f5_tts.infer.utils_infer import load_vocoder
 from f5_tts.model.utils import get_tokenizer
 import logging
 from peft import LoraConfig, PeftModel, LoraModel, get_peft_model
 from f5_tac.configs.model_kwargs import lora_configv1, lora_configv2, lora_configv3, mel_spec_kwargs, dit_cfg
 
+cross_fade_duration = 0.15
+ode_method = "euler"
+nfe_step = 32  # 16, 32
+cfg_strength = 2.0
+sway_sampling_coef = -1.0
+speed = 1.0
+target_sample_rate = 24000
+steps=32
+max_duration = 4096
 
 def load_model_and_vocoder(ckpt_path, vocab_file, device, lora=False):
     """Load model and vocoder."""
@@ -111,7 +118,7 @@ def generate_sample(model, vocoder, wav_A, wav_B, text_A, text_B, gen_text_A=Non
 
 def process_row(row, model, vocoder, out_dir, device, sr=24000):
     """Process one metadata row: generate & save outputs."""
-
+    # import pdb; pdb.set_trace()
     base_name_A = os.path.basename(row["speaker_A_wav"])
     clip_id = base_name_A.replace("_A.wav", "")
 
@@ -167,4 +174,4 @@ def process_all(metadata_path, out_dir, model, vocoder, device):
     for idx, row in df.iterrows():
         conversation_id = f"{row['recording_id']}_{idx}"
         print(f"Processing {conversation_id}...")
-        process_row(row, model, vocoder, out_dir, device, conversation_id)
+        process_row(row, model, vocoder, out_dir, device)

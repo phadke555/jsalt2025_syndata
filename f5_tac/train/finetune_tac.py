@@ -61,6 +61,9 @@ def parse_args():
     )
     parser.add_argument("--logger", type=str, default="wandb", choices=[None, "wandb", "tensorboard"], help="Logger.")
     parser.add_argument("--log_samples", action="store_true", help="Log audio samples during training.")
+    parser.add_argument("--train_length", type=str, default=500, help="Number of Conversations to use for Training. Default is 500 conversations ~90 hours of speech.")
+    parser.add_argument("--val_length", type=str, default=5, help="Number of Conversations to use for Validation. Default is 1% of train length.")
+    parser.add_argument("--early_stopping_threshold", type=str, default=5, help="Number of Conversations to use for Validation. Default is 1% of train length.")
     parser.add_argument("--bnb_optimizer", action="store_true", help="Use bitsandbytes 8-bit optimizer.")
 
     return parser.parse_args()
@@ -80,11 +83,13 @@ def main():
                 raise ValueError(f"Unknown config key: {key}")
     
     dataset_path = os.path.join(args.data_root, args.dataset_name) if args.data_root else args.dataset_name
+    print(f"Dataset Path: {dataset_path}")
     val_dataset_path = os.path.join(args.data_root, args.val_dataset_name)
     checkpoint_path = os.path.join(args.data_root, "ckpts", args.exp_name)
+    print(f"Checkpoints Path: {checkpoint_path}")
     os.makedirs(checkpoint_path, exist_ok=True)
 
-    local_pretrain_path = args.pretrain
+    local_pretrain_path = args.pretrain if args.pretrain else None
     print(f"Using pretrained model from: {args.pretrain}")
     
     # --- 2. Setup Tokenizer ---
@@ -110,49 +115,49 @@ def main():
 
 
     # --- 5. Load Pretrained Weights into the New Architecture ---
-    print("Loading pretrained weights...")
-    if local_pretrain_path.endswith(".safetensors"):
-        from safetensors.torch import load_file
-        ckpt = load_file(local_pretrain_path, device="cpu")
-    else:
-        ckpt = torch.load(local_pretrain_path, map_location="cpu")
-    state = (
-        ckpt.get("model_state_dict", 
-        ckpt.get("ema_model_state_dict", ckpt))
-    )
-    state = {k.replace("ema_model.", ""): v for k, v in state.items()}
-
-
-    old_emb = state["transformer.text_embed.text_embed.weight"]  # [V, D]
-    if old_emb.shape[0] < vocab_size + 1:
-        rand_row = torch.randn(1, old_emb.shape[1]) * 0.02                       # small init
-        state["transformer.text_embed.text_embed.weight"] = torch.cat(
-            [old_emb, rand_row], dim=0
+    if local_pretrain_path:
+        print("Loading pretrained weights...")
+        if local_pretrain_path.endswith(".safetensors"):
+            from safetensors.torch import load_file
+            ckpt = load_file(local_pretrain_path, device="cpu")
+        else:
+            ckpt = torch.load(local_pretrain_path, map_location="cpu")
+        state = (
+            ckpt.get("model_state_dict", 
+            ckpt.get("ema_model_state_dict", ckpt))
         )
-        print(f"Vocab Embedding Matrix Updated to Size = {vocab_size + 1}")
+        state = {k.replace("ema_model.", ""): v for k, v in state.items()}
 
 
-    # 5) Finally load with strict=False to pick up whatever lines up
-    incompatible = model.load_state_dict(state, strict=False)
+        old_emb = state["transformer.text_embed.text_embed.weight"]  # [V, D]
+        if old_emb.shape[0] < vocab_size + 1:
+            rand_row = torch.randn(1, old_emb.shape[1]) * 0.02                       # small init
+            state["transformer.text_embed.text_embed.weight"] = torch.cat(
+                [old_emb, rand_row], dim=0
+            )
+            print(f"Vocab Embedding Matrix Updated to Size = {vocab_size + 1}")
 
-    print("✔ loaded partial state:")
-    print("  • missing   (should only be tac module keys)   :", incompatible.missing_keys[:5], "…")
-    print("  • unexpected  :", incompatible.unexpected_keys[:5], "…")
 
-    # ----------------------------------------------------------
-    # LoRA Experiment
-    from peft import LoraConfig, PeftModel, LoraModel, get_peft_model
+        # 5) Finally load with strict=False to pick up whatever lines up
+        incompatible = model.load_state_dict(state, strict=False)
+        print("✔ loaded partial state:")
+        print("  • missing   (should only be tac module keys)   :", incompatible.missing_keys[:5], "…")
+        print("  • unexpected  :", incompatible.unexpected_keys[:5], "…")
 
-    model = get_peft_model(model, lora_configv2)
+        # ----------------------------------------------------------
+        # LoRA
+        from peft import LoraConfig, PeftModel, LoraModel, get_peft_model
 
-    from f5_tac.configs.model_kwargs import unfrozen_modules
-    for name, param in model.named_parameters():
-        for name_in in unfrozen_modules:
-            if name_in in name:
-                param.requires_grad = True
-            
-    model.print_trainable_parameters()
-    # ----------------------------------------------------------
+        model = get_peft_model(model, lora_configv2)
+
+        from f5_tac.configs.model_kwargs import unfrozen_modules
+        for name, param in model.named_parameters():
+            for name_in in unfrozen_modules:
+                if name_in in name:
+                    param.requires_grad = True
+                
+        model.print_trainable_parameters()
+        # ----------------------------------------------------------
 
     num_devices = torch.cuda.device_count()
     print(f"Number of available CUDA devices: {num_devices}")
@@ -177,6 +182,7 @@ def main():
         mix_loss_lambda=1.0,
         logger=args.logger,
         recon_loss = True,
+        early_stopping_threshold=args.early_stopping_threshold,
         wandb_project=f"unittesting",
         wandb_run_name=args.exp_name,
         log_samples=args.log_samples,
@@ -187,16 +193,16 @@ def main():
     # --- 7. Load Dataset and Start Training ---
     print("Loading train dataset...")
     train_dataset = load_lhotse_dataset(
-        dataset_path="/work/users/r/p/rphadke/JSALT/fisher/lhotse_manifests/fixed/",
-        max_conversations=10,
+        dataset_path=dataset_path,
+        max_conversations=args.train_length,
         mel_spec_kwargs=mel_spec_kwargs
     )
     print("Train dataset length:", len(train_dataset))
 
     print("Loading val dataset...")
     val_dataset = load_lhotse_dataset(
-        dataset_path="/work/users/r/p/rphadke/JSALT/fisher/lhotse_manifests/fixed/",
-        max_conversations=5,
+        dataset_path=dataset_path,
+        max_conversations=args.val_length,
         conversation_offset=500,
         mel_spec_kwargs=mel_spec_kwargs
     )
@@ -214,4 +220,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

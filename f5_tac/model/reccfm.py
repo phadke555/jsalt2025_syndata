@@ -92,6 +92,7 @@ class CFMWithTACRecon(nn.Module):
         t_inter=0.1,
         edit_mask=None,
     ):
+        # import pdb; pdb.set_trace()
         self.eval()
         device = self.device
 

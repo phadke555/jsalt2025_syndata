@@ -34,3 +34,4 @@ envs/ts_asr_whisper
 versa/
 asrx.slurm
 concat_speech.slurm
+ref_metrics.slurm
