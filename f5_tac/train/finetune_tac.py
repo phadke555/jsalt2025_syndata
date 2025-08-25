@@ -15,7 +15,6 @@ from f5_tac.model.backbones.dittac import DiTWithTAC
 from f5_tac.model.trainer import Trainer
 from f5_tac.model.dataset import load_lhotse_dataset, conversation_collate_fn
 from f5_tac.configs.model_kwargs import mel_spec_kwargs, dit_cfg, lora_configv2
-from f5_tac.train.utils import load_state, update_embedding_weights, get_lora_model
 from f5_tts.model.utils import get_tokenizer
 
 # --- Argument Parsing (adapted for finetuning TAC model) ---
@@ -65,7 +64,6 @@ def parse_args():
     parser.add_argument("--train_length", type=str, default=500, help="Number of Conversations to use for Training. Default is 500 conversations ~90 hours of speech.")
     parser.add_argument("--val_length", type=str, default=5, help="Number of Conversations to use for Validation. Default is 1% of train length.")
     parser.add_argument("--early_stopping_threshold", type=str, default=5, help="Number of Conversations to use for Validation. Default is 1% of train length.")
-    parser.add_argument("--num_workers", type=int, default=12, help="Number of CPU Workers")
     parser.add_argument("--bnb_optimizer", action="store_true", help="Use bitsandbytes 8-bit optimizer.")
 
     return parser.parse_args()
@@ -139,27 +137,27 @@ def main():
             )
             print(f"Vocab Embedding Matrix Updated to Size = {vocab_size + 1}")
 
+
+        # 5) Finally load with strict=False to pick up whatever lines up
         incompatible = model.load_state_dict(state, strict=False)
         print("✔ loaded partial state:")
         print("  • missing   (should only be tac module keys)   :", incompatible.missing_keys[:5], "…")
         print("  • unexpected  :", incompatible.unexpected_keys[:5], "…")
 
+        # ----------------------------------------------------------
         # LoRA
         from peft import LoraConfig, PeftModel, LoraModel, get_peft_model
 
         model = get_peft_model(model, lora_configv2)
 
         from f5_tac.configs.model_kwargs import unfrozen_modules
-        trainable = 0
-        all = 0
         for name, param in model.named_parameters():
-            all += 1
             for name_in in unfrozen_modules:
                 if name_in in name:
                     param.requires_grad = True
-                    trainable += 1
-        print(f"Unfrozen Module Params = {trainable} | All Named Params = {all} | Proportion = {trainable/all}")    
+                
         model.print_trainable_parameters()
+        # ----------------------------------------------------------
 
     num_devices = torch.cuda.device_count()
     print(f"Number of available CUDA devices: {num_devices}")
@@ -183,9 +181,9 @@ def main():
         max_grad_norm=1.0, # max_grad_norm is not in args
         mix_loss_lambda=1.0,
         logger=args.logger,
-        recon_loss=True,
+        recon_loss = True,
         early_stopping_threshold=args.early_stopping_threshold,
-        wandb_project=f"icassp-dev",
+        wandb_project=f"unittesting",
         wandb_run_name=args.exp_name,
         log_samples=args.log_samples,
         bnb_optimizer=args.bnb_optimizer,
@@ -205,27 +203,17 @@ def main():
     val_dataset = load_lhotse_dataset(
         dataset_path=dataset_path,
         max_conversations=args.val_length,
-        conversation_offset=args.train_length,
+        conversation_offset=500,
         mel_spec_kwargs=mel_spec_kwargs
     )
     print("Val dataset length:", len(val_dataset))
-
-    print("Loading test dataset...")
-    test_dataset = load_lhotse_dataset(
-        dataset_path=dataset_path,
-        max_conversations=args.val_length*2,
-        conversation_offset=args.train_length+args.val_length,
-        mel_spec_kwargs=mel_spec_kwargs
-    )
-    print("Test dataset length:", len(val_dataset))
     
     print("Starting training...")
     trainer.train(
         train_dataset=train_dataset,
         val_dataset=val_dataset,
-        test_dataset=test_dataset,
         collate_fn=conversation_collate_fn, # Pass your custom collate fn
-        num_workers=8, # Adjust as needed
+        num_workers=18, # Adjust as needed
         resumable_with_seed=666,
     )
 
