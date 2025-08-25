@@ -322,7 +322,7 @@ class Trainer:
                         noise_scheduler=self.noise_scheduler,
                     )
                 else:
-                    loss_A, loss_B, cond_A, pred_A, cond_B, pred_B = self.model(
+                    loss_A, loss_B, mix_loss, cond_A, pred_A, cond_B, pred_B = self.model(
                         mel_A=mel_A,
                         text_A=text_A,
                         mel_lengths_A=mel_lengths_A,
@@ -392,9 +392,13 @@ class Trainer:
         import numpy as np
         return np.median(wers_A), np.median(wers_B), np.mean(mcds_A), np.mean(mcds_B)
 
+    @torch.no_grad()
+    def test_metrics(self, test_dataloader: DataLoader, metrics=["wer", "mcd"]):
+        wer_A, wer_B, mcd_A, mcd_B = self.eval_metrics(test_dataloader)
+        return wer_A, wer_B, mcd_A, mcd_B
 
 
-    def train(self, train_dataset: Dataset, val_dataset: Dataset, collate_fn, num_workers=2, prefetch_factor=4, resumable_with_seed: int = None):
+    def train(self, train_dataset: Dataset, val_dataset: Dataset, test_dataset: Dataset, collate_fn, num_workers=2, prefetch_factor=4, resumable_with_seed: int = None):
         if self.log_samples:
             from f5_tac.infer.utils import cfg_strength, nfe_step, sway_sampling_coef, target_sample_rate, steps, max_duration
 
@@ -457,6 +461,16 @@ class Trainer:
                 drop_last=False
             )
             print("Val dataloader length:", len(val_dataloader))
+            test_dataloader = DataLoader(
+                test_dataset,
+                collate_fn=collate_fn,
+                num_workers=num_workers,
+                prefetch_factor=prefetch_factor,
+                pin_memory=True,
+                shuffle=False,
+                drop_last=False
+            )
+            print("Test dataloader length:", len(test_dataloader))
         else:
             raise ValueError(f"batch_size_type must be either 'sample' or 'frame', but received {self.batch_size_type}")
 
@@ -474,8 +488,8 @@ class Trainer:
         self.scheduler = SequentialLR(
             self.optimizer, schedulers=[warmup_scheduler, decay_scheduler], milestones=[warmup_updates]
         )
-        train_dataloader, self.scheduler, val_dataloader = self.accelerator.prepare(
-            train_dataloader, self.scheduler, val_dataloader
+        train_dataloader, self.scheduler, val_dataloader, test_dataloader = self.accelerator.prepare(
+            train_dataloader, self.scheduler, val_dataloader, test_dataloader
         )  # actual multi_gpu updates = single_gpu updates / gpu nums
         start_update = self.load_checkpoint()
         global_update = start_update
@@ -652,7 +666,7 @@ class Trainer:
                         self.writer.add_scalar("val_loss", avg_val_loss, global_update)
                     self.model.train()
 
-                if (global_update % self.last_per_updates == 0) and self.accelerator.is_local_main_process:
+                if (global_update % self.save_per_updates == 0) and self.accelerator.is_local_main_process:
                     self.model.eval()
                     wer_A, wer_B, mcd_A, mcd_B = self.eval_metrics(val_dataloader, metrics=["wer", "mcd"])
                     if wer_A <= min_wer_A:
@@ -666,9 +680,6 @@ class Trainer:
 
                 if global_update % self.last_per_updates == 0 and self.accelerator.sync_gradients:
                     self.save_checkpoint(global_update, last=True)
-
-                if global_update % self.save_per_updates == 0 and self.accelerator.sync_gradients:
-                    self.save_checkpoint(global_update)
 
                     # NOTE: this might need to be updated
                     if self.log_samples and self.accelerator.is_local_main_process:
@@ -718,8 +729,13 @@ class Trainer:
                             )
                             print(f"Logged a mono sample @ update {global_update}")
                             self.model.train()
+
+                if global_update % self.save_per_updates == 0 and self.accelerator.sync_gradients:
+                    self.save_checkpoint(global_update)
                 
             if early_stopping >= self.early_stopping_threshold:
+                wer_A, wer_B, mcd_A, mcd_B = self.test_metrics(test_dataloader, metrics=["wer", "mcd"])
+                self.accelerator.log({"test/median-werA": wer_A, "test/median-werB": wer_B, "test/mean-mcdA": mcd_A, "test/mean-mcdB": mcd_B}, step=global_update)
                 break
 
         self.save_checkpoint(global_update, last=True)
