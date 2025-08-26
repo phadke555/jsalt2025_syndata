@@ -32,7 +32,7 @@ def parse_args():
     parser.add_argument("--finetune", action="store_true", help="Whether to finetune from a pretrained checkpoint.")
 
     # --------------------- Checkpoints and Tokenizer --------------------- #
-    parser.add_argument("--pretrain", type=str, required=True, help="Path or URL to pretrained F5 checkpoint.")
+    parser.add_argument("--pretrain", type=str, help="Path or URL to pretrained F5 checkpoint.")
     parser.add_argument(
         "--tokenizer", type=str, default="custom", choices=["pinyin", "char", "custom"], help="Tokenizer type."
     )
@@ -111,8 +111,9 @@ def main():
         mel_spec_kwargs=mel_spec_kwargs,
         vocab_char_map=vocab_char_map,
     )
-    
 
+    if not local_pretrain_path:
+        print("Training from scratch. Not loading weights.")
 
     # --- 5. Load Pretrained Weights into the New Architecture ---
     if local_pretrain_path:
@@ -157,7 +158,12 @@ def main():
                     param.requires_grad = True
                 
         model.print_trainable_parameters()
-        # ----------------------------------------------------------
+
+    all = 0
+    for name, param in model.named_parameters():
+        all += 1
+        param.requires_grad = True
+    print(f"Trainable Named Params = {all}")
 
     num_devices = torch.cuda.device_count()
     print(f"Number of available CUDA devices: {num_devices}")
@@ -183,7 +189,7 @@ def main():
         logger=args.logger,
         recon_loss = True,
         early_stopping_threshold=args.early_stopping_threshold,
-        wandb_project=f"unittesting",
+        wandb_project=f"icassp-dev",
         wandb_run_name=args.exp_name,
         log_samples=args.log_samples,
         bnb_optimizer=args.bnb_optimizer,
@@ -203,7 +209,7 @@ def main():
     val_dataset = load_lhotse_dataset(
         dataset_path=dataset_path,
         max_conversations=args.val_length,
-        conversation_offset=500,
+        conversation_offset=args.train_length,
         mel_spec_kwargs=mel_spec_kwargs
     )
     print("Val dataset length:", len(val_dataset))
@@ -213,7 +219,7 @@ def main():
         train_dataset=train_dataset,
         val_dataset=val_dataset,
         collate_fn=conversation_collate_fn, # Pass your custom collate fn
-        num_workers=18, # Adjust as needed
+        num_workers=4, # Adjust as needed
         resumable_with_seed=666,
     )
 

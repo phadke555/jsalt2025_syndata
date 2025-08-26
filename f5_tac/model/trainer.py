@@ -300,7 +300,7 @@ class Trainer:
         wers_B = []
         
         with torch.no_grad():
-            for val_batch in val_dataloader:
+            for val_batch in tqdm(val_dataloader, desc="Evaluating", total=len(val_dataloader)):
                 # import pdb; pdb.set_trace()
                 mel_A = val_batch["mel_A"].permute(0, 2, 1)
                 text_A = val_batch["text_A"]
@@ -609,7 +609,7 @@ class Trainer:
                         self.writer.add_scalar("loss", total_loss.item(), global_update)
                         self.writer.add_scalar("lr", self.scheduler.get_last_lr()[0], global_update)
 
-                if global_update % self.val_per_updates == 0 and self.accelerator.is_local_main_process:
+                if global_update % self.val_per_updates == 0 and self.accelerator.sync_gradients and self.accelerator.is_local_main_process:
                     self.model.eval()
                     total_val_loss = 0.0
                     n_val_batches = 0
@@ -652,7 +652,7 @@ class Trainer:
                         self.writer.add_scalar("val_loss", avg_val_loss, global_update)
                     self.model.train()
 
-                if (global_update % self.last_per_updates == 0) and self.accelerator.is_local_main_process:
+                if (global_update % self.last_per_updates == 0) and self.accelerator.sync_gradients and self.accelerator.is_local_main_process:
                     self.model.eval()
                     wer_A, wer_B, mcd_A, mcd_B = self.eval_metrics(val_dataloader, metrics=["wer", "mcd"])
                     if wer_A <= min_wer_A:
