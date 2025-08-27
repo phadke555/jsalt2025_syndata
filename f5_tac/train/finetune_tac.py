@@ -187,11 +187,11 @@ def main():
         max_grad_norm=1.0, # max_grad_norm is not in args
         mix_loss_lambda=1.0,
         logger=args.logger,
-        recon_loss = True,
+        recon_loss = False,
         early_stopping_threshold=args.early_stopping_threshold,
         wandb_project=f"icassp-dev",
         wandb_run_name=args.exp_name,
-        log_samples=args.log_samples,
+        log_samples=True,
         bnb_optimizer=args.bnb_optimizer,
         accelerate_kwargs={"mixed_precision": "bf16"}
     )

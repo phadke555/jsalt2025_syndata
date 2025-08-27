@@ -100,8 +100,7 @@ class CFMWithTACRecon(nn.Module):
         # If conds is [2, n_mel, T], we permute:
         conds = conds.to(device)
         if conds.ndim == 2:
-            conds = self.mel_spec(conds)
-        conds = conds.permute(0,2,1)
+            conds = self.mel_spec(conds).permute(0,2,1)
         conds = conds.to(next(self.parameters()).dtype)
         batch, cond_seq_len, D = conds.shape
         if not exists(lens):
