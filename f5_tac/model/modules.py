@@ -9,6 +9,7 @@ from f5_tts.model.backbones.dit import DiT
 from f5_tts.model.modules import DiTBlock
 
 from f5_tac.model.tac import TAC
+from f5_tac.model.ca import ChannelAttention
 
 
 class DiTBlockWithTAC(DiTBlock):
@@ -47,6 +48,41 @@ class DiTBlockWithTAC(DiTBlock):
         x = x.reshape(B, T, S, D).permute(0, 2, 1, 3)
 
         # x = x.reshape(B*S, T, D)   # -> (B⋅S, T, D)
+
+        blocks = [x[:, i] for i in range(S)]    # each (B, T, D)
+        x = torch.cat(blocks, dim=0)            # → (B⋅S, T, D)
+
+        return x
+
+
+class DiTBlockWithCA(DiTBlock):
+    def __init__(self, *args, dim, num_speakers: int = 2, **kwargs):
+        super().__init__(*args, dim=dim, **kwargs)
+        self.num_speakers = num_speakers
+        self.channel_attention = ChannelAttention(input_dim=dim)
+    
+    def forward(self, x, t, mask=None, rope=None, spk_mask=None):
+        x = super().forward(x, t, mask=mask, rope=rope) # -> (B⋅S, T, D)
+
+        B2, T, D = x.shape
+        if spk_mask is None:
+            S = self.num_speakers # TODO: infer from speaker count
+            B = B2 // S
+            spk_mask = x.new_ones((B, S), dtype=torch.bool)
+        else:
+            S = spk_mask.shape[1]
+            B = B2 // S
+
+        # Convert (B*S, T, D) → (B, S, T, D) using chunk
+        x = torch.stack(torch.chunk(x, S, dim=0), dim=1)
+
+        x = x.permute(0, 1, 3, 2) # -> (B, S, D, T)
+        x = x.unsqueeze(3) # B, S, D, F, T
+
+        x = self.channel_attention(x) # B, S, D, F, T
+        x = x.squeeze(3) # B, S, D, T
+
+        x = x.permute(0, 1, 3, 2) # B, S, T, D
 
         blocks = [x[:, i] for i in range(S)]    # each (B, T, D)
         x = torch.cat(blocks, dim=0)            # → (B⋅S, T, D)
