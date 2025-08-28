@@ -5,6 +5,7 @@ import torch.nn
 import difflib
 
 ### espnet channel attention and related implementations used here
+### from: https://github.com/espnet/espnet/blob/04f57dbc1d852531fd33e30f7e870eb163070c22/espnet2/enh/layers/uses.py#L290
 
 def get_layer(l_name, library=torch.nn):
     """Return layer object handler from library e.g. from torch.nn
@@ -69,7 +70,7 @@ class LayerNormalization(nn.Module):
     
 class ChannelAttention(nn.Module):
     def __init__(
-        self, input_dim, att_heads=4, att_dim=256, activation="relu", eps=1e-5
+        self, input_dim, att_heads=4, att_dim=256, activation="relu", eps=1e-5, init_scale=1.0
     ):
         """Channel Attention module.
 
@@ -84,6 +85,7 @@ class ChannelAttention(nn.Module):
         self.att_heads = att_heads
         self.att_dim = att_dim
         self.activation = activation
+        self.init_scale = init_scale
         assert input_dim % att_heads == 0, (input_dim, att_heads)
         self.attn_conv_Q = nn.Sequential(
             nn.Linear(input_dim, att_dim),
@@ -105,6 +107,25 @@ class ChannelAttention(nn.Module):
             get_layer(activation)(),
             LayerNormalization(input_dim, dim=-1, total_dim=5, eps=eps),
         )
+
+        self.apply(self._init_weights)
+    
+    def _init_weights(self, m):
+        if isinstance(m, torch.nn.Linear):
+            # choose initializer based on activation
+            if self.activation == 'relu':
+                # He (Kaiming) initialization for ReLU
+                torch.nn.init.kaiming_uniform_(m.weight, a=0, nonlinearity='relu')
+            else:
+                # Xavier/Glorot init with gain for other nonlinearities
+                gain = torch.nn.init.calculate_gain(self.activation)
+                torch.nn.init.xavier_uniform_(m.weight, gain=gain)
+            # zero biases
+            if m.bias is not None:
+                torch.nn.init.zeros_(m.bias)
+
+            if self.init_scale != 1.0:
+                m.weight.data.mul_(self.init_scale)
 
     def __getitem__(self, key):
         return getattr(self, key)

@@ -7,6 +7,10 @@ dit_cfg = dict(
     dim=1024, depth=22, heads=16, ff_mult=2, text_dim=512, conv_layers=4,
 )
 
+dit_small_cfg = dict(
+    dim=768, depth=18, heads=12, ff_mult=2, text_dim=512, conv_layers=4,
+)
+
 from peft import LoraConfig, PeftModel, LoraModel, get_peft_model
 rank = 64
 lora_configv1 = LoraConfig(
@@ -35,4 +39,5 @@ lora_configv3 = LoraConfig(
     bias="none",
 )
 
-unfrozen_modules = ["tac", "text_embed.text_embed", "input_embed"]
+# unfrozen_modules = ["tac", "text_embed.text_embed", "input_embed"]
+unfrozen_modules = ["channel_attention", "text_embed.text_embed", "input_embed"]

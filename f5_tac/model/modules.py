@@ -62,6 +62,7 @@ class DiTBlockWithCA(DiTBlock):
         self.channel_attention = ChannelAttention(input_dim=dim)
     
     def forward(self, x, t, mask=None, rope=None, spk_mask=None):
+        # import pdb; pdb.set_trace()
         x = super().forward(x, t, mask=mask, rope=rope) # -> (B⋅S, T, D)
 
         B2, T, D = x.shape

@@ -25,7 +25,9 @@ from versa.sequence_metrics.mcd_f0 import mcd_f0
 
 from torch import nn
 
-# trainer
+# trainer adapted from F5-TTS implementation by authors
+# from: https://github.com/SWivid/F5-TTS/blob/main/src/f5_tts/model/trainer.py
+
 
 
 class Trainer:
@@ -431,6 +433,7 @@ class Trainer:
                 pred_B = self.vocoder.decode(pred_B.permute(0, 2, 1))
                 real_B = self.vocoder.decode(mel_B.permute(0, 2, 1))
 
+                # use of Versa from WavLab: https://github.com/wavlab-speech/ 
                 if "mcd" in metrics and seen <= 10:
                     mcd_A = mcd_f0(
                         pred_x=pred_A.squeeze().cpu().numpy(), gt_x=real_A.squeeze().cpu().numpy(),
@@ -574,7 +577,7 @@ class Trainer:
         global_update = start_update
 
         early_stopping = 0
-        min_wer_A = float("inf")
+        min_mcd_A = float("inf")
 
         if exists(resumable_with_seed):
             orig_epoch_step = len(train_dataloader)
@@ -698,12 +701,12 @@ class Trainer:
                         self.writer.add_scalar("val_loss", avg_val_loss, global_update)
                     self.model.train()
 
-                if (global_update % self.last_per_updates == 0) and self.accelerator.sync_gradients and self.accelerator.is_local_main_process:
+                if (global_update % self.save_per_updates == 0) and self.accelerator.sync_gradients and self.accelerator.is_local_main_process:
                     self.model.eval()
                     wer_A, wer_B, mcd_A, mcd_B = self.eval_metrics(val_dataloader, metrics=["wer", "mcd"])
-                    if wer_A <= min_wer_A:
+                    if mcd_A <= min_mcd_A:
                         early_stopping = 0
-                        min_wer_A = wer_A
+                        min_mcd_A = mcd_A
                     else:
                         early_stopping += 1
                     print({"eval/median-werA": wer_A, "eval/median-werB": wer_B, "eval/mean-mcdA": mcd_A, "eval/mean-mcdB": mcd_B})
