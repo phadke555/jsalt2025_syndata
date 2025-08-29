@@ -36,3 +36,5 @@ versa/
 asrx.slurm
 concat_speech.slurm
 ref_metrics.slurm
+f5_ss/model/__pycache__
+f5_ss/__pycache__

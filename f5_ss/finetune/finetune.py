@@ -249,7 +249,8 @@ def main():
     
     # PATCH
     # works for custom dataset finetuning
-    train_dataset = load_dataset(data_dir, tokenizer, dataset_type="CustomDatasetPath", mel_spec_kwargs=mel_spec_kwargs)
+    from f5_ss.model.dataset import load_lhotse_dataset
+    train_dataset = load_lhotse_dataset("/export/fs06/rphadke1/data/fisher/lhotse_manifests/fixed")
 
     trainer.train(
         train_dataset,
